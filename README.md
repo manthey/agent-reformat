@@ -31,7 +31,7 @@ Add this repository as a local hook reference in your project's `.pre-commit-con
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/manthey/manthey-precommit-hooks
-    rev: v1.0.0  # Use the SHA from `helm template`, or tag
+    rev: v1.0.0
     hooks:
       - id: trim-underscores
 ```
@@ -40,7 +40,7 @@ Then run pre-commit to install and test:
 
 ```bash
 pre-commit install
-pre-commit run --all-files  # Test it now!
+pre-commit run --all-files  
 ```
 
 ### Standalone Usage
@@ -48,16 +48,6 @@ pre-commit run --all-files  # Test it now!
 You can also run the hook script directly for one-time cleanup:
 
 ```bash
-python hooks/trim_underscores.py \
-    --remove-underscores \
-    --remove-blank-lines \
-    path/to/file1.py path/to/file2.py
-
-# Or with custom blank line gap (default is 3 consecutive lines)
-python hooks/trim_underscores.py \
-    --remove-underscores \
-    --remove-blank-lines \
-    --blank-lines-gap=5 \
-    *.py
+python hooks/trim_underscores.py --remove-underscores --remove-blank-lines path/to/file1.py path/to/file2.py
 ```
 
