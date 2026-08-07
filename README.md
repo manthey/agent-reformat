@@ -40,7 +40,7 @@ Then run pre-commit to install and test:
 
 ```bash
 pre-commit install
-pre-commit run --all-files  
+pre-commit run --all-files
 ```
 
 ### Standalone Usage
@@ -50,4 +50,3 @@ You can also run the hook script directly for one-time cleanup:
 ```bash
 python hooks/trim_underscores.py --remove-underscores --remove-blank-lines path/to/file1.py path/to/file2.py
 ```
-
