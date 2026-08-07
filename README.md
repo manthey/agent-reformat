@@ -34,6 +34,9 @@ repos:
     rev: v1.0.0
     hooks:
       - id: trim-underscores
+        args:
+          - --underscores
+          - --blanks
 ```
 
 Then run pre-commit to install and test:
