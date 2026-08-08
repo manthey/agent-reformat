@@ -102,6 +102,6 @@ repos:
     rev: v1.0.1
     hooks:
       - id: trim-underscores
-        args:
-          - --underscores
-          # - --blanks
+        # args:
+        #   - --underscores
+        #   - --blanks

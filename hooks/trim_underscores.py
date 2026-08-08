@@ -7,114 +7,87 @@
 
 import argparse
 import ast
+import re
 import sys
 from pathlib import Path
 
 
-def get_offset_for_name(node, src_lines):
-    """Return (line_idx, col) for a single leading underscore on a name node."""
-    lineno = getattr(node, 'lineno', None)
-    if lineno is None or lineno - 1 >= len(src_lines):
-        return None
-    line_text = src_lines[lineno - 1].strip()
-    base_col = node.col_offset
-    prefix_len = -1
-    # Calculate column where '_name' starts after the keyword (def/class).
-    if line_text.startswith('async def '):
-        prefix_len = 9
-    elif line_text.startswith(('def ', 'class ')):
-        prefix_len = 4
-    if prefix_len != -1:
-        target_col = base_col + prefix_len
-        src_line = src_lines[lineno - 1]
-        if target_col < len(src_line) and src_line[target_col] == '_':
-            return (lineno - 1, target_col)
-    return None
-
-
-def get_offset_for_simple_node(node):
-    """Return (line_idx, col) for simple nodes where col_offset is exact."""
-    lineno = getattr(node, 'lineno', None)
-    if lineno is None:
-        return None
-
-    def is_dunder_check(val):
-        return isinstance(val, str) and val.startswith('_') \
-            and not val.startswith('__')
-
-    if hasattr(node, 'arg') and isinstance(node.arg, str):
-        arg = node.arg
-        if is_dunder_check(arg) and arg != '_':
-            return (node.lineno - 1, getattr(node, 'col_offset', -1))
-    if hasattr(node, 'attr') and is_dunder_check(node.attr):
-        attr_col = node.end_col_offset - len(node.attr)
-        return (node.lineno - 1, attr_col)
-    return None
-
-
-def get_underscore_offsets(filepath):  # noqa
-    """Parse source using AST to find single leading underscores."""
+def parse_source(source):
+    """Parse source code into an AST tree safely."""
     try:
-        src_lines = Path(filepath).read_text(encoding='utf-8').splitlines(keepends=True)
-        tree = ast.parse(''.join(src_lines))
+        return ast.parse(source)
     except SyntaxError:
-        return []
-    offsets = []
+        return None
+
+
+def get_usage_counts(tree):
+    """Count occurrences of identifiers used in the file."""
+    usages = {}
     for node in ast.walk(tree):
-        # 1. Functions, Async Functions, and Classes (excluding dunders like __init__)
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
+            usages[node.id] = usages.get(node.id, 0) + 1
+    return usages
+
+
+def get_definitions(tree):
+    """Extract all defined identifiers (functions, classes, variables)."""
+    definitions = set()
+    for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            name = getattr(node, 'name', '')
-            if hasattr(name, 'startswith') and name.startswith('_') and \
-                    not name.startswith('__'):
-                off = get_offset_for_name(node, src_lines)
-                if off:
-                    offsets.append(off)
+            definitions.add(node.name)
         elif isinstance(node, ast.Assign):
             for target in node.targets:
                 if isinstance(target, ast.Name):
-                    tid = target.id
-                    if hasattr(tid, 'startswith') and \
-                            tid.startswith('_') and not \
-                            tid.startswith('__') and tid != '_':
-                        offsets.append((target.lineno - 1,
-                                        getattr(target, 'col_offset', -1)))
-        elif isinstance(node, ast.arg):
-            off = get_offset_for_simple_node(node)
-            if off:
-                offsets.append(off)
-        elif isinstance(node, ast.Attribute):
-            off = get_offset_for_simple_node(node)
-            if off:
-                offsets.append(off)
-        elif isinstance(node, ast.keyword) and node.arg:
-            arg = node.arg
-            if hasattr(arg, 'startswith') and arg.startswith('_') \
-                    and not arg.startswith('__'):
-                offsets.append((node.lineno - 1, node.col_offset))
-    return offsets
+                    definitions.add(target.id)
+    return definitions
 
 
-def fix_file(filepath):
-    """Remove underscores identified by AST parsing."""
-    offsets = get_underscore_offsets(filepath)
-    if not offsets:
+def get_clean_name(ident, usages):
+    """Determine the cleaned identifier name based on strict rules."""
+    # 1. Must start with single leading underscore but not a dunder
+    if not ident.startswith('_') or ident.startswith('__'):
+        return None
+    # 2. EXCEPT functions/methods/variables with trailing underscores
+    if ident.endswith('_'):
         return False
-    src_lines = Path(filepath).read_text(encoding='utf-8').splitlines(keepends=True)
-    # Sort offsets in reverse order (bottom-up, right-left) to preserve indices.
-    offsets.sort(reverse=True)
-    deleted_count = 0
-    for line_idx, col_idx in offsets:
-        if line_idx < len(src_lines):
-            src_line = src_lines[line_idx]
-            # Double check bounds and exact character match.
-            if 0 <= col_idx < len(src_line) and src_line[col_idx] == '_':
-                src_lines[line_idx] = (src_line[:col_idx] +
-                                       src_line[col_idx + 1:])
-                deleted_count += 1
-    if deleted_count > 0:
-        Path(filepath).write_text(''.join(src_lines), encoding='utf-8')
-        return True
-    return False
+    # 3. Must be actively used! Unused vars are often intentional placeholders
+    usages_count = usages.get(ident, 0)
+    if usages_count == 0:
+        return None
+    # Return the cleaned name (all leading underscores stripped)
+    return ident.lstrip('_')
+
+
+def strip_underscores(filepath):
+    """Strip leading underscores from defined and used identifiers robustly."""
+    file_path = Path(filepath)
+    source = file_path.read_text(encoding='utf-8')
+
+    tree = parse_source(source)
+    if not tree:
+        return False
+    # Get definitions and active usage counts
+    raw_usages = get_usage_counts(tree)
+    raw_definitions = get_definitions(tree)
+
+    replacements = {}
+    for ident in raw_definitions:
+        new_name = get_clean_name(ident, raw_usages)
+
+        # Explicit type check prevents boolean truthiness bugs from leaking!
+        if isinstance(new_name, str):
+            replacements[ident] = new_name
+    if not replacements:
+        return False
+    new_source = source
+
+    # Replace by sorted length descending to avoid accidental substring
+    # replacement issues (e.g., '_a' vs '_abc')
+    for old_name, new_name in sorted(replacements.items(), key=len, reverse=True):
+        pattern = r'\b' + re.escape(old_name) + r'\b'
+        new_source = re.sub(pattern, new_name, new_source)
+    file_path.write_text(new_source, encoding='utf-8')
+    return True
 
 
 def should_keep_blank_line(
@@ -274,22 +247,25 @@ def run():
         ),
     )
     args = parser.parse_args()
+
     changed = False
     for filepath in args.files:
-        if filepath.endswith('.py'):
-            try:
-                if args.remove_underscores and fix_file(filepath):
-                    print(f'Stripped leading underscores from {filepath}')
+        if not filepath.endswith('.py'):
+            continue
+        try:
+            # Run underscore stripping (AST based)
+            if args.remove_underscores and strip_underscores(filepath):
+                print(f'Stripped leading underscores from {filepath}')
+                changed = True
+            if args.remove_blank_lines:
+                gap_val = args.blank_lines_gap
+                if fix_blanks(filepath, min_gap=gap_val):
+                    print(f'Stripped excessive blank lines from {filepath}')
                     changed = True
-                if args.remove_blank_lines:
-                    gap_val = args.blank_lines_gap
-                    if fix_blanks(filepath, min_gap=gap_val):
-                        print(f'Stripped excessive blank lines from {filepath}')
-                        changed = True
-            except Exception as e:
-                print(f'Failed to process {filepath}: {e}', file=sys.stderr)
-        else:
-            print(f'Skipping non-Python file: {filepath}', file=sys.stderr)
+        except Exception:
+            import traceback
+            print(f'Failed to process {filepath}:', file=sys.stderr)
+            traceback.print_exc(file=sys.stderr)
     sys.exit(1 if changed else 0)
 
 
