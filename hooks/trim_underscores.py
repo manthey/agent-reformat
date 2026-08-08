@@ -58,18 +58,16 @@ def get_clean_name(ident, usages):
     return ident.lstrip('_')
 
 
-def strip_underscores(filepath):
+def strip_underscores(filepath, dry_run=False, show=False):
     """Strip leading underscores from defined and used identifiers robustly."""
     file_path = Path(filepath)
     source = file_path.read_text(encoding='utf-8')
-
     tree = parse_source(source)
     if not tree:
         return False
     # Get definitions and active usage counts
     raw_usages = get_usage_counts(tree)
     raw_definitions = get_definitions(tree)
-
     replacements = {}
     for ident in raw_definitions:
         new_name = get_clean_name(ident, raw_usages)
@@ -80,13 +78,15 @@ def strip_underscores(filepath):
     if not replacements:
         return False
     new_source = source
-
     # Replace by sorted length descending to avoid accidental substring
     # replacement issues (e.g., '_a' vs '_abc')
     for old_name, new_name in sorted(replacements.items(), key=len, reverse=True):
         pattern = r'\b' + re.escape(old_name) + r'\b'
         new_source = re.sub(pattern, new_name, new_source)
-    file_path.write_text(new_source, encoding='utf-8')
+    if show:
+        print(new_source.rstrip())
+    if not dry_run:
+        file_path.write_text(new_source, encoding='utf-8')
     return True
 
 
@@ -126,7 +126,7 @@ def should_keep_blank_line(
     return same_indent and gap_reached
 
 
-def fix_blanks(filepath, min_gap=3):
+def fix_blanks(filepath, min_gap=3, dry_run=False, show=False):  # noqa
     """Remove excessive blank lines between code blocks.
 
     For PEP8 E302 compliance (two blank lines before top-level
@@ -199,10 +199,13 @@ def fix_blanks(filepath, min_gap=3):
         else:
             output_lines.append('\n')
     new_source = ''.join(output_lines)
-    if new_source != source:
+    if new_source == source:
+        return False
+    if show:
+        print(new_source.rstrip())
+    if not dry_run:
         Path(filepath).write_text(new_source, encoding='utf-8')
-        return True
-    return False
+    return True
 
 
 def run():
@@ -246,6 +249,12 @@ def run():
             'blank line is permitted elsewhere. Default is %(default)s.'
         ),
     )
+    parser.add_argument(
+        '-n', '--dry-run', '--check', action='store_true',
+        help='Report if files would be changed but do not change them.')
+    parser.add_argument(
+        '--show', action='store_true',
+        help='Show the file if it is changed.')
     args = parser.parse_args()
 
     changed = False
@@ -254,12 +263,13 @@ def run():
             continue
         try:
             # Run underscore stripping (AST based)
-            if args.remove_underscores and strip_underscores(filepath):
-                print(f'Stripped leading underscores from {filepath}')
-                changed = True
+            if args.remove_underscores:
+                if strip_underscores(filepath, args.dry_run, args.show):
+                    print(f'Stripped leading underscores from {filepath}')
+                    changed = True
             if args.remove_blank_lines:
                 gap_val = args.blank_lines_gap
-                if fix_blanks(filepath, min_gap=gap_val):
+                if fix_blanks(filepath, gap_val, args.dry_run, args.show):
                     print(f'Stripped excessive blank lines from {filepath}')
                     changed = True
         except Exception:
