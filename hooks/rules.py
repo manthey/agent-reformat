@@ -42,7 +42,6 @@ def expand_shorthand(name: str) -> tuple[str, ...]:
     return tuple(codes)
 
 
-
 def rules_from_pyproject(path: str | Path) -> set[str] | None:
     """Read *[tool.trim-underscores.rules]* from pyproject.toml."""
     toml_path = Path(path) / 'pyproject.toml'

@@ -206,12 +206,11 @@ def fix_blanks(filepath, rules, min_gap=3, dry_run=False, show=False):
     return True
 
 
-def strip_repeated_comments(filepath, dry_run=False, show=False):  # noqa: ANN201
+def strip_repeated_comments(filepath, dry_run=False, show=False):
     """MPH021: Remove lines containing comments that repeat 4+ non-whitespace chars."""
     file_path = Path(filepath)
     with open(file_path, encoding='utf-8', newline='') as f:
         lines = f.readlines()
-
     new_lines = []
     changed = False
     for line in lines:
@@ -225,7 +224,6 @@ def strip_repeated_comments(filepath, dry_run=False, show=False):  # noqa: ANN20
             changed = True
             continue  # Remove the entire cluttered comment line
         new_lines.append(line)
-
     new_source = ''.join(new_lines)
     if not changed:
         return False
@@ -295,7 +293,6 @@ def run():
 
     if not effective_rules:
         return  # Nothing to do.
-
     changed = False
     und_codes_all = expand_shorthand('underscores') or ('MPH001', 'MPH002',
                                                         'MPH003')
@@ -327,7 +324,7 @@ def run():
                     changed = True
             if cmt_active:
                 if strip_repeated_comments(Path(filepath), not args.fix,
-                                          args.show):
+                                           args.show):
                     rule_list = ','.join(sorted(cmt_active))
                     print(f'{rule_list} – stripped cluttered comments '
                           f'from {filepath}')
