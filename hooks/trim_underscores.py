@@ -263,8 +263,8 @@ def run():
         ),
     )
     parser.add_argument(
-        '-n', '--dry-run', '--check', action='store_true',
-        help='Report if files would be changed but do not change them.')
+        '--fix', action='store_true',
+        help='Actually make the changes. Default is to show what would change.')
     parser.add_argument(
         '--show', action='store_true',
         help='Show the file if it is changed.')
@@ -277,12 +277,12 @@ def run():
         try:
             # Run underscore stripping (AST based)
             if args.remove_underscores:
-                if strip_underscores(filepath, args.dry_run, args.show):
+                if strip_underscores(filepath, not args.fix, args.show):
                     print(f'Stripped leading underscores from {filepath}')
                     changed = True
             if args.remove_blank_lines:
                 gap_val = args.blank_lines_gap
-                if fix_blanks(filepath, gap_val, args.dry_run, args.show):
+                if fix_blanks(filepath, gap_val, not args.fix, args.show):
                     print(f'Stripped excessive blank lines from {filepath}')
                     changed = True
         except Exception:
