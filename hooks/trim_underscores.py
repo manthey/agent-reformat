@@ -206,6 +206,37 @@ def fix_blanks(filepath, rules, min_gap=3, dry_run=False, show=False):
     return True
 
 
+def strip_repeated_comments(filepath, dry_run=False, show=False):  # noqa: ANN201
+    """MPH021: Remove lines containing comments that repeat 4+ non-whitespace chars."""
+    file_path = Path(filepath)
+    with open(file_path, encoding='utf-8', newline='') as f:
+        lines = f.readlines()
+
+    new_lines = []
+    changed = False
+    for line in lines:
+        if '#' not in line:
+            new_lines.append(line)
+            continue
+        # Extract comment part (everything after the first '#')
+        _, _, comment_rest = line.partition('#')
+        # Check for 4+ identical non-whitespace characters in the comment itself
+        if re.search(r'(\S)\1{3,}', comment_rest):
+            changed = True
+            continue  # Remove the entire cluttered comment line
+        new_lines.append(line)
+
+    new_source = ''.join(new_lines)
+    if not changed:
+        return False
+    if show:
+        print(new_source.rstrip())
+    if not dry_run:
+        with open(file_path, 'w', encoding='utf-8', newline='') as f:
+            f.write(new_source)
+    return True
+
+
 def run():
     """CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -228,7 +259,6 @@ def run():
                              ' Overrides shorthands.')
     args = parser.parse_args()
 
-    # 1. Resolve effective rules ---------------------------------------------------
     cli_raw = set()
     if args.rules:
         for r in args.rules.replace(';', ',').split(','):
@@ -265,18 +295,22 @@ def run():
 
     if not effective_rules:
         return  # Nothing to do.
+
     changed = False
     und_codes_all = expand_shorthand('underscores') or ('MPH001', 'MPH002',
                                                         'MPH003')
     blk_codes_all = expand_shorthand('blanks') or ('MPH011', 'MPH012',
                                                    'MPH013', 'MPH014',
                                                    'MPH015')
+    cmt_rules_active = {'MPH021'}  # Explicit code for repeated comment removal
+
     for filepath in args.files:
         if not str(filepath).endswith('.py'):
             continue
         try:
             und_active = effective_rules & set(und_codes_all)
             blk_active = effective_rules & set(blk_codes_all)
+            cmt_active = effective_rules & cmt_rules_active
 
             if und_active:
                 if strip_underscores(Path(filepath), und_active,
@@ -289,6 +323,13 @@ def run():
                               args.blank_lines_gap, not args.fix, args.show):
                     rule_list = ','.join(sorted(blk_active))
                     print(f'{rule_list} – stripped excessive blanks '
+                          f'from {filepath}')
+                    changed = True
+            if cmt_active:
+                if strip_repeated_comments(Path(filepath), not args.fix,
+                                          args.show):
+                    rule_list = ','.join(sorted(cmt_active))
+                    print(f'{rule_list} – stripped cluttered comments '
                           f'from {filepath}')
                     changed = True
         except Exception:  # pragma: no cover

@@ -5,8 +5,6 @@ import configparser
 import tomllib
 from pathlib import Path
 
-# ---------------------------------------------------------------------------
-# Rule catalogue -----------------------------------------------------------
 RULE_CATALOG: dict[str, dict[str, str]] = {
     'MPH001': {'group': 'underscores', 'desc': 'Strip single leading underscores from modules-level variables.'},
     'MPH002': {'group': 'underscores', 'desc': 'Strip single leading underscores from top-level functions.'},
@@ -16,6 +14,7 @@ RULE_CATALOG: dict[str, dict[str, str]] = {
     'MPH013': {'group': 'blanks', 'desc': 'Preserve blank lines separating import blocks.'},
     'MPH014': {'group': 'blanks', 'desc': 'Preserve blank lines when outdenting from blocks.'},
     'MPH015': {'group': 'blanks', 'desc': 'Normalize trailing blank lines at end of file.'},
+    'MPH021': {'group': 'comments', 'desc': 'Remove comment-only lines repeating 4+ identical non-whitespace chars.'},
 }
 
 GROUPS: dict[str, tuple[str, ...]] = {
@@ -43,8 +42,6 @@ def expand_shorthand(name: str) -> tuple[str, ...]:
     return tuple(codes)
 
 
-# ---------------------------------------------------------------------------
-# Resolution helpers --------------------------------------------------------
 
 def rules_from_pyproject(path: str | Path) -> set[str] | None:
     """Read *[tool.trim-underscores.rules]* from pyproject.toml."""
