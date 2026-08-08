@@ -6,34 +6,34 @@ import tomllib
 from pathlib import Path
 
 RULE_CATALOG: dict[str, dict[str, str]] = {
-    'MPH001': {'group': 'underscores',
+    'AR001': {'group': 'underscores',
                'desc': 'Strip single leading underscores from '
                        'modules-level variables.'},
-    'MPH002': {'group': 'underscores',
+    'AR002': {'group': 'underscores',
                'desc': 'Strip single leading underscores from '
                        'top-level functions.'},
-    'MPH003': {'group': 'underscores',
+    'AR003': {'group': 'underscores',
                'desc': 'Strip single leading underscores from methods.'},
-    'MPH011': {'group': 'blanks',
+    'AR011': {'group': 'blanks',
                'desc': 'Collapse multiple consecutive blanks '
                        'before def/class/decorator.'},
-    'MPH012': {'group': 'blanks',
+    'AR012': {'group': 'blanks',
                'desc': 'Enforce minimum code-line gap between blanks.'},
-    'MPH013': {'group': 'blanks',
+    'AR013': {'group': 'blanks',
                'desc': 'Preserve blank lines separating import blocks.'},
-    'MPH014': {'group': 'blanks',
+    'AR014': {'group': 'blanks',
                'desc': 'Preserve blank lines when outdenting '
                        'from blocks.'},
-    'MPH015': {'group': 'blanks',
+    'AR015': {'group': 'blanks',
                'desc': 'Normalize trailing blank lines at end of file.'},
-    'MPH021': {'group': 'comments',
+    'AR021': {'group': 'comments',
                'desc': 'Remove comment-only lines repeating 4+'
                        ' identical non-whitespace chars.'},
 }
 
 GROUPS: dict[str, tuple[str, ...]] = {
-    'underscores': ('MPH001', 'MPH002', 'MPH003'),
-    'blanks': ('MPH011', 'MPH012', 'MPH013', 'MPH014', 'MPH015'),
+    'underscores': ('AR001', 'AR002', 'AR003'),
+    'blanks': ('AR011', 'AR012', 'AR013', 'AR014', 'AR015'),
 }
 
 
@@ -46,7 +46,7 @@ def prefix_lookup(code: str) -> list[str]:
 def expand_codes(code: str) -> set[str]:
     """Expand a code (exact or prefix) into matching rule codes.
 
-    'MPH02' expands to {'MPH021'},  'MPH001' stays as {'MPH001'},
+    'AR02' expands to {'AR021'},  'AR001' stays as {'AR001'},
     unknown raises ValueError.
     """
     normed = code.upper()
@@ -89,13 +89,13 @@ def expand_shorthand(name: str) -> tuple[str, ...]:
 
 
 def rules_from_pyproject(path: str | Path) -> set[str] | None:
-    """Read *[tool.trim-underscores.rules]* from pyproject.toml."""
+    """Read *[tool.agent-reformat.rules]* from pyproject.toml."""
     toml_path = Path(path) / 'pyproject.toml'
     if not toml_path.is_file():
         return None
     with open(toml_path, 'rb') as fh:
         cfg = tomllib.load(fh)
-    section = (cfg.get('tool', {}) or {}).get('trim-underscores')
+    section = (cfg.get('tool', {}) or {}).get('agent-reformat')
     if not isinstance(section, dict):
         return None
     found: set[str] = set()
@@ -147,14 +147,14 @@ def rules_from_pyproject(path: str | Path) -> set[str] | None:
 
 
 def rules_from_tox(path: str | Path) -> set[str] | None:
-    """Read *[trim-underscores]* section from tox.ini (legacy config)."""
+    """Read *[agent-reformat]* section from tox.ini (legacy config)."""
     ini_path = Path(path) / 'tox.ini'
     if not ini_path.is_file():
         return None
     cp = configparser.ConfigParser()
     cp.read(str(ini_path))
 
-    sec_name = 'trim-underscores'
+    sec_name = 'agent-reformat'
     if sec_name not in cp:
         return None
     section = cp[sec_name]

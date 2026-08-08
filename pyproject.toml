@@ -12,11 +12,11 @@ requires-python = ">=3.9"
 dependencies = []
 
 [project.scripts]
-trim-underscores = "hooks.trim_underscores:run"
+agent-reformat = "hooks.agent_reformat:run"
 
 [tool.setuptools.packages.find]
 where = ["."]
 included = ["hooks"]
 
-[tool.trim-underscores]
-rules = ["MPH011", "MPH012"]
+[tool.agent-reformat]
+rules = ["AR011", "AR012"]
