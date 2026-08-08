@@ -58,10 +58,18 @@ def get_clean_name(ident, usages):
     return ident.lstrip('_')
 
 
+def detect_line_ending(source: str) -> str:
+    """Detect dominant line ending in source text, CRLF or LF."""
+    if '\r\n' in source:
+        return '\r\n'
+    return '\n'
+
+
 def strip_underscores(filepath, dry_run=False, show=False):
     """Strip leading underscores from defined and used identifiers robustly."""
     file_path = Path(filepath)
-    source = file_path.read_text(encoding='utf-8')
+    with open(file_path, encoding='utf-8', newline='') as f:
+        source = f.read()
     tree = parse_source(source)
     if not tree:
         return False
@@ -86,7 +94,8 @@ def strip_underscores(filepath, dry_run=False, show=False):
     if show:
         print(new_source.rstrip())
     if not dry_run:
-        file_path.write_text(new_source, encoding='utf-8', newline='\n')
+        with open(file_path, 'w', encoding='utf-8', newline='') as f:
+            f.write(new_source)
     return True
 
 
@@ -134,7 +143,10 @@ def fix_blanks(filepath, min_gap=3, dry_run=False, show=False):  # noqa
     preceding a def/class are handled specially: up to two are kept,
     any more are stripped.
     """
-    source = Path(filepath).read_text(encoding='utf-8')
+    with open(filepath, encoding='utf-8', newline='') as f:
+        source = f.read()
+    line_end = detect_line_ending(source)
+    sep_blank = line_end
     lines = source.splitlines(keepends=True)
     output_lines = []
     pending_blank = False
@@ -167,12 +179,12 @@ def fix_blanks(filepath, min_gap=3, dry_run=False, show=False):  # noqa
                 for pfx in ('def ', 'async def ', 'class ', '@')
             ):
                 # PEP8 E302: keep up to 2 blanks before top-level defs/classes/decorators
-                output_lines.append('\n\n')
+                output_lines.append(sep_blank + sep_blank)
             elif outdented_to_top and consecutive_blanks >= 2:
                 # PEP8 E305: after nested block, need 2 blanks at module level too
-                output_lines.append('\n\n')
+                output_lines.append(sep_blank + sep_blank)
             elif should_keep:
-                output_lines.append('\n')
+                output_lines.append(sep_blank)
                 code_lines_since_last_blank = 0
             consecutive_blanks = 0
             pending_blank = False
@@ -195,16 +207,17 @@ def fix_blanks(filepath, min_gap=3, dry_run=False, show=False):  # noqa
             prev_text.strip().endswith(suffix)
             for suffix in ('def ', 'async def ', 'class ')
         ) or consecutive_blanks >= 2:
-            output_lines.append('\n\n')
+            output_lines.append(sep_blank + sep_blank)
         else:
-            output_lines.append('\n')
+            output_lines.append(sep_blank)
     new_source = ''.join(output_lines)
     if new_source == source:
         return False
     if show:
         print(new_source.rstrip())
     if not dry_run:
-        Path(filepath).write_text(new_source, encoding='utf-8', newline='\n')
+        with open(filepath, 'w', encoding='utf-8', newline='') as f:
+            f.write(new_source)
     return True
 
 
