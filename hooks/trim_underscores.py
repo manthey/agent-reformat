@@ -283,7 +283,7 @@ def run():
         cfg_path = str(Path(__file__).resolve().parent.parent)
         try:
             resolved_cfg = resolve_rules(cli_raw, cfg_path) or set()
-        except Exception:  # pragma: no cover
+        except Exception:
             resolved_cfg = set()
         tox_cfg = (getattr(_rules_mod, 'rules_from_tox', lambda p: None)(cfg_path) or
                    set()) if hasattr(_rules_mod, 'rules_from_tox') else set()
@@ -329,7 +329,7 @@ def run():
                     print(f'{rule_list} – stripped cluttered comments '
                           f'from {filepath}')
                     changed = True
-        except Exception:  # pragma: no cover
+        except Exception:
             import traceback as _tb
             print(f'Failed to process {filepath}: ', file=sys.stderr)
             _tb.print_exc(file=sys.stderr)
