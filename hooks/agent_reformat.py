@@ -28,23 +28,66 @@ resolve_rules = rules.resolve_rules
 expand_codes = rules.expand_codes
 
 
+def has_noqa(line, rules=frozenset()):
+    r"""Return True if line has a proper ``# noqa`` directive for any of *rules*.
+
+    A "proper" directive: ``# noqa`` (bare), ``# noqa AR0XX``, or
+    ``# noqa:[AR0XX]``. Does NOT match comments that just contain the word
+    "noqa" in regular prose.
+    """
+    hash_pos = line.find("#")
+    if hash_pos < 0:
+        return False
+    # Look for "noqa" at start of comment text (with optional whitespace)
+    after_hash = line[hash_pos + 1:]
+    noqa_m = re.match(r'\s*(?i:noqa)(.*)$', after_hash, re.IGNORECASE)
+    if not noqa_m:
+        return False
+    after_noqa = noqa_m.group(1).strip()
+
+    # Empty or whitespace-only after noqa = bare "skip all"
+    if not after_noqa:
+        return True
+    # Strip leading colon/bracket chars before examining content
+    cleaned = re.sub(r'^[ :\[]+', '', after_noqa).rstrip(' ]')
+
+    # Check for bracket syntax or code-like text 
+    if ']' in cleaned and cleaned.index(']') > 0:
+        codes_text = cleaned[:cleaned.index(']')]
+    elif re.match(r'[A-Z][A-Z\s\d]*', cleaned, re.IGNORECASE):
+        codes_text = cleaned
+    else:
+        # Text doesn't look like codes -> bare noqa  
+        return True
+    if not codes_text.strip():
+        return True
+    code_set = frozenset()
+    for raw in re.finditer(r'[A-Z]+\s*\d+', codes_text):
+        token = raw.group(0).strip().replace(' ', '')
+        try:
+            code_set |= set(expand_codes(token))
+        except ValueError:
+            pass
+    return bool(code_set & rules) if code_set else True
+
+
 def collect_definitions_by_type(tree):
-    """Return dict of {ident: variable/function/method} scoped to module-level only."""
-    defs = {}
+    """Return list of (ident, kind, lineno) tuples scoped to module-level only."""
+    result = []
     for node in getattr(tree, 'body', []):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            defs[node.name] = 'function'
+            result.append((node.name, 'function', node.lineno))
         elif isinstance(node, ast.ClassDef):
             for inner_node in getattr(node, 'body', []):
                 if isinstance(inner_node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    defs[inner_node.name] = 'method'
+                    result.append((inner_node.name, 'method', inner_node.lineno))
         elif isinstance(node, (ast.Assign, ast.AnnAssign)):
             targets = getattr(node, 'targets', []) or [getattr(node,
                                                                'target', None)]
             for tgt in targets:
                 if tgt and isinstance(tgt, ast.Name):
-                    defs[tgt.id] = 'variable'
-    return defs
+                    result.append((tgt.id, 'variable', node.lineno))
+    return result
 
 
 def strip_underscores(filepath, rules, dry_run=False, show=False):
@@ -56,10 +99,10 @@ def strip_underscores(filepath, rules, dry_run=False, show=False):
         tree = ast.parse(source)
     except SyntaxError:
         return False
-    usages = {}
+    usages = {}       # noqa lines per identifier
     for node in ast.walk(tree):
         if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
-            usages[node.id] = usages.get(node.id, 0) + 1
+            usages.setdefault(node.id, []).append(getattr(node, 'lineno', None))
     raw_defs = collect_definitions_by_type(tree)
     replacements = {}
 
@@ -68,13 +111,8 @@ def strip_underscores(filepath, rules, dry_run=False, show=False):
     active_underscore_rules = set(rules) & set(underscore_codes)
     if not active_underscore_rules:
         return False
-    for ident, kind in raw_defs.items():
-        if not ident.startswith('_') or ident.startswith('__'):
-            continue
-        if ident.endswith('_'):
-            continue
-        if usages.get(ident, 0) == 0:
-            continue
+    def _is_protected(ident, kind, lineno):
+        """Return True if identifier should NOT be stripped."""
         kept = False
         for r in active_underscore_rules:
             entry = lookup(r)
@@ -88,6 +126,31 @@ def strip_underscores(filepath, rules, dry_run=False, show=False):
                 elif kind == 'method' and code == 'AR003':
                     kept = True
         if not kept:
+            return False  # Not a candidate for stripping at all
+        lines = source.splitlines()
+        # 1. Check definition line for ``# noqa``
+        def_line_lineno = lineno - 1
+        if 0 <= def_line_lineno < len(lines):
+            if has_noqa(lines[def_line_lineno], active_underscore_rules):
+                return True
+        # 2. Check all usage lines (Load nodes) for matching ``# noqa``
+        if usages.get(ident):
+            for ln in usages[ident]:
+                if ln is None:
+                    continue
+                if 0 <= ln - 1 < len(lines):
+                    if has_noqa(lines[ln - 1], active_underscore_rules):
+                        return True
+        return False
+
+    for ident, kind, lineno in raw_defs:
+        if not ident.startswith('_') or ident.startswith('__'):
+            continue
+        if ident.endswith('_'):
+            continue
+        if usages.get(ident, 0) == 0:
+            continue
+        if _is_protected(ident, kind, lineno):
             continue
         replacements[ident] = ident.lstrip('_')
     if not replacements:
@@ -134,6 +197,7 @@ def fix_blanks(filepath, rules, min_gap=3, dry_run=False, show=False):
         if pending_blank:
             has_many = consecutive_blanks >= 2
             write_pep8_two = False
+            curr_has_noqa = has_noqa(line, active_rules) and not curr_text.startswith(' ')
 
             if ('AR011' in active_rules and has_many and
                     curr_indent == 0):
@@ -167,6 +231,8 @@ def fix_blanks(filepath, rules, min_gap=3, dry_run=False, show=False):
                 elif keep_for_outdent:
                     should_keep = True
                 elif same_indent and gap_reached:
+                    should_keep = True
+                elif curr_has_noqa:
                     should_keep = True
                 if write_pep8_two:
                     pass
@@ -207,7 +273,7 @@ def fix_blanks(filepath, rules, min_gap=3, dry_run=False, show=False):
     return True
 
 
-def strip_repeated_comments(filepath, dry_run=False, show=False):
+def strip_repeated_comments(filepath, rules=frozenset(), dry_run=False, show=False):
     """AR021: Remove lines containing comments that repeat 4+ non-whitespace chars."""
     file_path = Path(filepath)
     with open(file_path, encoding='utf-8', newline='') as f:
@@ -220,6 +286,10 @@ def strip_repeated_comments(filepath, dry_run=False, show=False):
             continue
         # Extract comment part (everything after the first '#')
         _, _, comment_rest = line.partition('#')
+        # Honor ``# noqa`` on the whole line.
+        if has_noqa(line, rules):
+            new_lines.append(line)
+            continue
         # Check for 4+ identical non-whitespace characters in the comment itself
         if re.search(r'(\S)\1{3,}', comment_rest):
             changed = True
@@ -322,7 +392,7 @@ def run():
                           f'from {filepath}')
                     changed = True
             if cmt_active:
-                if strip_repeated_comments(Path(filepath), not args.fix,
+                if strip_repeated_comments(Path(filepath), effective_rules, not args.fix,
                                            args.show):
                     rule_list = ','.join(sorted(cmt_active))
                     print(f'{rule_list} – stripped cluttered comments '
