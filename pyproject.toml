@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61"]
+requires = ["setuptools>=61", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -13,3 +13,10 @@ dependencies = []
 
 [project.scripts]
 trim-underscores = "hooks.trim_underscores:run"
+
+[tool.setuptools.packages.find]
+where = ["."]
+included = ["hooks"]
+
+[tool.trim-underscores]
+rules = ["MPH011", "MPH012"]
