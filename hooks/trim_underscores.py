@@ -14,17 +14,18 @@ import sys
 from pathlib import Path
 
 try:
-    from . import rules as _rules_mod  # pip / tests / -m
+    from . import rules as rules  # pip / tests / -m
 except ImportError:  # standalone CLI
     parent = str(Path(__file__).resolve().parent.parent)
     if parent not in sys.path:
         sys.path.insert(0, parent)
-    import hooks.rules as _rules_mod
+    import hooks.rules as rules
 
-lookup = _rules_mod.lookup
-expand_shorthand = _rules_mod.expand_shorthand
-validate_rules = _rules_mod.validate_rules
-resolve_rules = _rules_mod.resolve_rules
+lookup = rules.lookup
+expand_shorthand = rules.expand_shorthand
+validate_rules = rules.validate_rules
+resolve_rules = rules.resolve_rules
+expand_codes = rules.expand_codes
 
 
 def collect_definitions_by_type(tree):
@@ -263,8 +264,7 @@ def run():
             t = r.strip().upper()
             if t:
                 try:
-                    entry = lookup(t)
-                    cli_raw.add((entry.get('code') or t).upper())
+                    cli_raw.update(expand_codes(t))
                 except ValueError as exc:
                     print(f'Error: {exc}', file=sys.stderr)
                     sys.exit(2)
@@ -285,8 +285,8 @@ def run():
             resolved_cfg = resolve_rules(cli_raw, cfg_path) or set()
         except Exception:
             resolved_cfg = set()
-        tox_cfg = (getattr(_rules_mod, 'rules_from_tox', lambda p: None)(cfg_path) or
-                   set()) if hasattr(_rules_mod, 'rules_from_tox') else set()
+        tox_cfg = (getattr(rules, 'rules_from_tox', lambda p: None)(cfg_path) or
+                   set()) if hasattr(rules, 'rules_from_tox') else set()
         if resolved_cfg or tox_cfg:
             cli_raw = (resolved_cfg | tox_cfg)
     effective_rules = validate_rules(cli_raw)

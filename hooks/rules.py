@@ -6,15 +6,29 @@ import tomllib
 from pathlib import Path
 
 RULE_CATALOG: dict[str, dict[str, str]] = {
-    'MPH001': {'group': 'underscores', 'desc': 'Strip single leading underscores from modules-level variables.'},
-    'MPH002': {'group': 'underscores', 'desc': 'Strip single leading underscores from top-level functions.'},
-    'MPH003': {'group': 'underscores', 'desc': 'Strip single leading underscores from methods.'},
-    'MPH011': {'group': 'blanks', 'desc': 'Collapse multiple consecutive blanks before def/class/decorator.'},
-    'MPH012': {'group': 'blanks', 'desc': 'Enforce minimum code-line gap between blanks.'},
-    'MPH013': {'group': 'blanks', 'desc': 'Preserve blank lines separating import blocks.'},
-    'MPH014': {'group': 'blanks', 'desc': 'Preserve blank lines when outdenting from blocks.'},
-    'MPH015': {'group': 'blanks', 'desc': 'Normalize trailing blank lines at end of file.'},
-    'MPH021': {'group': 'comments', 'desc': 'Remove comment-only lines repeating 4+ identical non-whitespace chars.'},
+    'MPH001': {'group': 'underscores',
+               'desc': 'Strip single leading underscores from '
+                       'modules-level variables.'},
+    'MPH002': {'group': 'underscores',
+               'desc': 'Strip single leading underscores from '
+                       'top-level functions.'},
+    'MPH003': {'group': 'underscores',
+               'desc': 'Strip single leading underscores from methods.'},
+    'MPH011': {'group': 'blanks',
+               'desc': 'Collapse multiple consecutive blanks '
+                       'before def/class/decorator.'},
+    'MPH012': {'group': 'blanks',
+               'desc': 'Enforce minimum code-line gap between blanks.'},
+    'MPH013': {'group': 'blanks',
+               'desc': 'Preserve blank lines separating import blocks.'},
+    'MPH014': {'group': 'blanks',
+               'desc': 'Preserve blank lines when outdenting '
+                       'from blocks.'},
+    'MPH015': {'group': 'blanks',
+               'desc': 'Normalize trailing blank lines at end of file.'},
+    'MPH021': {'group': 'comments',
+               'desc': 'Remove comment-only lines repeating 4+'
+                       ' identical non-whitespace chars.'},
 }
 
 GROUPS: dict[str, tuple[str, ...]] = {
@@ -23,13 +37,42 @@ GROUPS: dict[str, tuple[str, ...]] = {
 }
 
 
+def prefix_lookup(code: str) -> list[str]:
+    """Return codes from RULE_CATALOG that start with the given prefix."""
+    prefix = code.upper()
+    return [k for k in RULE_CATALOG if k.startswith(prefix)]
+
+
+def expand_codes(code: str) -> set[str]:
+    """Expand a code (exact or prefix) into matching rule codes.
+
+    'MPH02' expands to {'MPH021'},  'MPH001' stays as {'MPH001'},
+    unknown raises ValueError.
+    """
+    normed = code.upper()
+    # exact match first
+    if normed in RULE_CATALOG:
+        return {normed}
+    prefixes = prefix_lookup(normed)
+    msg: str
+    if len(prefixes) == 1:
+        return set(prefixes)
+    if not prefixes:
+        avail = ', '.join(sorted(RULE_CATALOG.keys()))
+        msg = f"Unknown rule code '{code}'. Available: {avail}"
+        raise ValueError(msg)
+    return set(prefixes)
+
+
 def lookup(code: str) -> dict[str, str]:
     """Validate code and return metadata; raises ValueError on unknown codes."""
     normed = code.upper()
     entry = RULE_CATALOG.get(normed)
+    msg: str
     if not entry:
         avail = ', '.join(sorted(RULE_CATALOG.keys()))
-        raise ValueError(f"Unknown rule code '{code}'. Available: {avail}")
+        msg = f"Unknown rule code '{code}'. Available: {avail}"
+        raise ValueError(msg)
     return dict(entry, code=normed)
 
 
@@ -37,8 +80,11 @@ def expand_shorthand(name: str) -> tuple[str, ...]:
     """Expand a shorthand string (e.g. 'blanks') into its corresponding codes."""
     clean = name.replace('-', '').lower()
     codes = GROUPS.get(clean)
+    msg: str
     if not codes:  # type: ignore[unreachable]
-        raise ValueError(f"Unknown shorthand '{name}'. Valid: {list(GROUPS.keys())}")
+        avail = list(GROUPS.keys())
+        msg = f"Unknown shorthand '{name}'. Valid: {avail}"
+        raise ValueError(msg)
     return tuple(codes)
 
 
@@ -58,21 +104,26 @@ def rules_from_pyproject(path: str | Path) -> set[str] | None:
     if isinstance(raw_rules, list):
         for item in raw_rules:
             if isinstance(item, str):
-                entry = lookup(item)
-                found.add(entry['code'])  # type: ignore[typeddict-item]
+                found.update(expand_codes(item))
     elif isinstance(raw_rules, str):
         if ',' in raw_rules or ';' in raw_rules:
             for token in raw_rules.replace(';', ',').split(','):
                 token = token.strip().upper()
                 if token:
-                    entry = lookup(token)
-                    found.add(entry['code'])  # type: ignore[typeddict-item]
+                    found.update(expand_codes(token))
         else:
             try:
                 found.update(expand_shorthand(raw_rules))
             except ValueError:
-                entry = lookup(raw_rules)
-                found.add(entry['code'])  # type: ignore[typeddict-item]
+                try:
+                    found.update(expand_codes(raw_rules))
+                except ValueError as exc_2x:
+                    avail = ', '.join(sorted(RULE_CATALOG.keys()))
+                    msg = (
+                        f"Unknown shorthand '{raw_rules}'. "
+                        f'Valid: {list(GROUPS.keys())} Available: {avail}'
+                    )
+                    raise ValueError(msg) from exc_2x
     for key in GROUPS:
         val = section.get(key)
         if not val:
@@ -83,8 +134,15 @@ def rules_from_pyproject(path: str | Path) -> set[str] | None:
             try:
                 found.update(expand_shorthand(val))
             except ValueError:
-                entry = lookup(val)
-                found.add(entry['code'])  # type: ignore[typeddict-item]
+                try:
+                    found.update(expand_codes(val))
+                except ValueError as exc_3x:
+                    avail = ', '.join(sorted(RULE_CATALOG.keys()))
+                    msg = (
+                        f"Unknown shorthand '{val}'. "
+                        f'Valid: {list(GROUPS.keys())} Available: {avail}'
+                    )
+                    raise ValueError(msg) from exc_3x
     return found or None
 
 
@@ -108,8 +166,7 @@ def rules_from_tox(path: str | Path) -> set[str] | None:
         token = t.strip().upper()
         if token:
             try:
-                entry = lookup(token)
-                found.add(entry['code'])  # type: ignore[typeddict-item]
+                found.update(expand_codes(token))
             except ValueError:
                 pass
     return found or None
@@ -120,8 +177,7 @@ def resolve_rules(cli_rules: set[str], path: str | Path = '.') -> set[str]:
     if cli_rules:
         validated: set[str] = set()
         for r in cli_rules:
-            entry = lookup(r)
-            validated.add(entry['code'])  # type: ignore[typeddict-item]
+            validated.update(expand_codes(r))
         return validated
     pyproj = rules_from_pyproject(path) or set()
     tox_cfg = rules_from_tox(path) or set()
@@ -132,6 +188,5 @@ def validate_rules(rules: Iterable[str]) -> set[str]:  # noqa: F821
     """Validate and deduplicate a collection of rule codes."""
     validated: set[str] = set()
     for code in rules:
-        entry = lookup(code)
-        validated.add(entry['code'])  # type: ignore[typeddict-item]
+        validated.update(expand_codes(code))
     return validated
