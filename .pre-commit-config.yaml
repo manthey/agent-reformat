@@ -99,9 +99,7 @@ repos:
         args: [-c, pyproject.toml]
         exclude: model_card.yaml
   - repo: https://github.com/manthey/manthey-precommit-hooks
-    rev: v1.0.1
+    rev: v1.0.3
     hooks:
       - id: trim-underscores
-        # args:
-        #   - --underscores
-        #   - --blanks
+        args: [--underscores, --blanks]

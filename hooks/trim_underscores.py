@@ -86,7 +86,7 @@ def strip_underscores(filepath, dry_run=False, show=False):
     if show:
         print(new_source.rstrip())
     if not dry_run:
-        file_path.write_text(new_source, encoding='utf-8')
+        file_path.write_text(new_source, encoding='utf-8', newline='\n')
     return True
 
 
@@ -204,7 +204,7 @@ def fix_blanks(filepath, min_gap=3, dry_run=False, show=False):  # noqa
     if show:
         print(new_source.rstrip())
     if not dry_run:
-        Path(filepath).write_text(new_source, encoding='utf-8')
+        Path(filepath).write_text(new_source, encoding='utf-8', newline='\n')
     return True
 
 
