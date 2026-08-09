@@ -28,6 +28,13 @@ The hook exposes individual rule codes for granular control. You can activate sp
 | `AR013` | Blank lines | Preserve blank lines that separate import blocks from other code.            |
 | `AR014` | Blank lines | Preserve blank lines when outdenting from a `def`/`class` block.            |
 | `AR015` | Blank lines | Normalize trailing blank lines at end of file (PEP-8 E305/E306).           |
+| `AR021` | Comments    | Remove comment-only lines repeating 4+ identical non-whitespace chars.     |
+| `AR031` | Emojis      | Remove emoji characters.                                                    |
+| `AR032` | Emojis      | Replace decorative text with plain versions.                                |
+
+### Default Behavior
+
+If no rules are specified via CLI arguments or configuration files (`pyproject.toml`, `tox.ini`), _all_ available rules are enabled by default. This behavior is equivalent to passing `--rules=AR`, which expands all rule codes (AR*) for maximum cleanup coverage against LLM-generated code artifacts.
 
 ### Shorthands
 

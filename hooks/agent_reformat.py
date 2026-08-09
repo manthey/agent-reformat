@@ -477,8 +477,8 @@ def run():
                         help='Show file contents if modified (default: '
                         'print affected files only).')
     parser.add_argument('--rules', type=str, default='',
-                        help='Comma-separated rule codes (e.g. AR001,AR012).'
-                             ' Overrides shorthands.')
+                        help='Comma-separated rule codes (e.g. AR001,AR012). '
+                             'Pass "AR" to enable all rules. Overrides shorthands.')
     args = parser.parse_args()
 
     cli_raw = set()
@@ -507,8 +507,9 @@ def run():
             cli_raw = (resolved_cfg | tox_cfg)
     effective_rules = validate_rules(cli_raw)
 
+    # If no rules are specified anywhere (CLI or config), enable ALL rules by default.
     if not effective_rules:
-        return
+        effective_rules = validate_rules(expand_codes('AR'))
     changed = False
     und_codes_all = set(expand_shorthand('underscores'))
     blk_codes_all = set(expand_shorthand('blanks'))
