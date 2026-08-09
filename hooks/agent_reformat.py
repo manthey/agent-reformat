@@ -4,7 +4,6 @@
 # requires-python = ">=3.9"
 # dependencies = []
 # ///
-
 from __future__ import annotations
 
 import argparse
@@ -67,13 +66,11 @@ def has_noqa(line, rules=frozenset()):
     if not noqa_m:
         return False
     after_noqa = noqa_m.group(1).strip()
-
     # Empty or whitespace-only after noqa = bare "skip all"
     if not after_noqa:
         return True
     # Strip leading colon/bracket chars before examining content
     cleaned = re.sub(r'^[ :\[]+', '', after_noqa).rstrip(' ]')
-
     # Check for bracket syntax or code-like text
     if ']' in cleaned and cleaned.index(']') > 0:
         codes_text = cleaned[:cleaned.index(']')]
@@ -244,6 +241,11 @@ def fix_blanks(filepath, rules, min_gap=3, dry_run=False, show=False):  # noqa
                                      prev_indent + 4, 4):
                         if indent_cause.get(lvl) in ('def', 'class'):
                             keep_for_outdent = True
+                comment_gap_override = False
+                if 'AR016' in active_rules:
+                    prev_is_comp = prev_text.lstrip().startswith('#')
+                    curr_is_comp = curr_text.lstrip().startswith('#')
+                    comment_gap_override = (prev_is_comp or curr_is_comp)
                 gap_reached = code_lines_since_blank >= gap
                 same_indent = prev_indent == curr_indent
 
@@ -255,7 +257,7 @@ def fix_blanks(filepath, rules, min_gap=3, dry_run=False, show=False):  # noqa
                     should_keep = True
                 elif keep_for_outdent:
                     should_keep = True
-                elif same_indent and gap_reached:
+                elif same_indent and gap_reached and not comment_gap_override:
                     should_keep = True
                 elif curr_has_noqa:
                     should_keep = True
@@ -396,7 +398,6 @@ def strip_repeated_comments(filepath, rules=frozenset(), dry_run=False, show=Fal
         return []
     violations = []  # line numbers (1-based)
     seen_lines = set()
-
     # Iterate the global token stream: we ONLY care if a line's first meaningful token is a COMMENT.
     for tok in tokens:
         if tok.type == tokenize.COMMENT:
@@ -405,7 +406,6 @@ def strip_repeated_comments(filepath, rules=frozenset(), dry_run=False, show=Fal
                 continue
             lines = source.split('\n')
             line_text = lines[lineno - 1]
-
             # Check for "" directive (skip if present)
             if has_noqa(line_text, rules):
                 seen_lines.add(lineno)
@@ -413,7 +413,6 @@ def strip_repeated_comments(filepath, rules=frozenset(), dry_run=False, show=Fal
             # Extract the comment content based on token position
             start_col = tok.start[1] + 1  # +1 for the '#' itself
             comment_part = line_text[start_col - 1:]
-
             # Check for repetition of ANY non-whitespace character (letters, digits, or symbols)
             if re.search(r'(\S)\1{3,}', comment_part):
                 violations.append(lineno)
@@ -523,7 +522,6 @@ def run():
         if resolved_cfg or tox_cfg:
             cli_raw = (resolved_cfg | tox_cfg)
     effective_rules = validate_rules(cli_raw)
-
     # If no rules are specified anywhere (CLI or config), enable ALL rules by default.
     if not effective_rules:
         effective_rules = validate_rules(expand_codes('AR'))

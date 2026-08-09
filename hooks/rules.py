@@ -26,6 +26,8 @@ RULE_CATALOG: dict[str, dict[str, str]] = {
                        'from blocks.'},
     'AR015': {'group': 'blanks',
               'desc': 'Normalize trailing blank lines at end of file.'},
+    'AR016': {'group': 'blanks',
+              'desc': 'Remove blank lines before and after comments.'},
     'AR021': {'group': 'comments',
               'desc': 'Remove comment-only lines repeating 4+'
                        ' identical non-whitespace chars.'},
@@ -37,7 +39,7 @@ RULE_CATALOG: dict[str, dict[str, str]] = {
 
 GROUPS: dict[str, tuple[str, ...]] = {
     'underscores': ('AR001', 'AR002', 'AR003'),
-    'blanks': ('AR011', 'AR012', 'AR013', 'AR014', 'AR015'),
+    'blanks': ('AR011', 'AR012', 'AR013', 'AR014', 'AR015', 'AR016'),
     'emojis': ('AR031', 'AR032'),
 }
 
