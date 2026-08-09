@@ -31,6 +31,9 @@ RULE_CATALOG: dict[str, dict[str, str]] = {
     'AR021': {'group': 'comments',
               'desc': 'Remove comment-only lines repeating 4+'
                        ' identical non-whitespace chars.'},
+    'AR022': {'group': 'comments',
+              'desc': 'Enforce max line length on comment-only '
+                       'lines (error only, no auto-fix).'},
     'AR031': {'group': 'emojis',
               'desc': 'Remove emoji characters.'},
     'AR032': {'group': 'emojis',
@@ -41,6 +44,7 @@ GROUPS: dict[str, tuple[str, ...]] = {
     'underscores': ('AR001', 'AR002', 'AR003'),
     'blanks': ('AR011', 'AR012', 'AR013', 'AR014', 'AR015', 'AR016'),
     'emojis': ('AR031', 'AR032'),
+    'comments': ('AR021', 'AR022'),
 }
 
 
@@ -123,6 +127,71 @@ def find_rules_from_section(raw_rules):
     return found
 
 
+def read_pyproject_section(path):
+    toml_path = Path(path) / 'pyproject.toml'
+    if not toml_path.is_file():
+        return None
+    with open(toml_path, 'rb') as fh:
+        cfg = tomllib.load(fh)
+    section = (cfg.get('tool', {}) or {}).get('agent-reformat')
+    if not isinstance(section, dict):
+        return None
+    return section
+
+
+def read_tox_section(path):
+    ini_path = Path(path) / 'tox.ini'
+    if not ini_path.is_file():
+        return None
+    cp = configparser.ConfigParser()
+    cp.read(str(ini_path))
+    if 'agent-reformat' not in cp:
+        return None
+    return dict(cp['agent-reformat'])
+
+
+def read_max_gap(cli_value, path='.'):
+    """Resolve --blank-lines-gap from CLI or config files."""
+    pyproj = read_pyproject_section(path)
+    if pyproj is not None:
+        val = pyproj.get('blank_lines_gap', pyproj.get('max-gap'))
+        if val is not None:
+            try:
+                return int(val)
+            except (ValueError, TypeError):
+                pass
+    tox_ini = read_tox_section(path)
+    if tox_ini is not None:
+        val = tox_ini.get('blank_lines_gap', tox_ini.get('max-gap'))
+        if val is not None:
+            try:
+                return int(val)
+            except (ValueError, TypeError):
+                pass
+    return cli_value
+
+
+def read_comment_max(cli_value, path='.'):
+    """Resolve --comment-lines-max from CLI or config files."""
+    pyproj = read_pyproject_section(path)
+    if pyproj is not None:
+        val = pyproj.get('comment_lines_max', pyproj.get('max-line-length'))
+        if val is not None:
+            try:
+                return int(val)
+            except (ValueError, TypeError):
+                pass
+    tox_ini = read_tox_section(path)
+    if tox_ini is not None:
+        val = tox_ini.get('comment_lines_max', tox_ini.get('max-line-length'))
+        if val is not None:
+            try:
+                return int(val)
+            except (ValueError, TypeError):
+                pass
+    return cli_value
+
+
 def rules_from_pyproject(path: str | Path) -> set[str] | None:
     """Read *[tool.agent-reformat.rules]* from pyproject.toml."""
     toml_path = Path(path) / 'pyproject.toml'
@@ -133,6 +202,7 @@ def rules_from_pyproject(path: str | Path) -> set[str] | None:
     section = (cfg.get('tool', {}) or {}).get('agent-reformat')
     if not isinstance(section, dict):
         return None
+    # Also resolve max-gap and comment-line-length from same config for convenience.
     found = find_rules_from_section(section.get('rules'))
     for key in GROUPS:
         val = section.get(key)

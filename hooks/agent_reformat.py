@@ -28,6 +28,8 @@ validate_rules = rules.validate_rules
 resolve_rules = rules.resolve_rules
 expand_codes = rules.expand_codes
 get_rule_group = rules.get_rule_group
+read_max_gap = rules.read_max_gap
+read_comment_max = rules.read_comment_max
 
 SUPP_EMOJI_RANGES = [
     (0x1F300, 0x1F9FF),  # Misc symbols, emoticons, transport
@@ -346,6 +348,40 @@ def has_genuine_emoji(line_text):
     return False
 
 
+def check_comment_line_length(filepath, rules, max_len=79):
+    """AR022: Check comment-only lines against max line length. Error only."""
+    file_path = Path(filepath)
+    with open(file_path, encoding='utf-8', newline='') as f:
+        source = f.read()
+    if 'AR022' not in rules:
+        return []
+    # We parse the entire token stream to strictly distinguish real comments
+    try:
+        tokens = list(tokenize.generate_tokens(io.StringIO(source).readline))
+    except tokenize.TokenizeError:
+        return []
+    violations = []  # line numbers (1-based)
+    seen_lines = set()
+    for tok in tokens:
+        if tok.type == tokenize.COMMENT:
+            lineno = tok.start[0]
+            if lineno in seen_lines:
+                continue
+            lines = source.split('\n')
+            line_text = lines[lineno - 1]
+            # A comment-only line: the entire stripped content is a comment
+            stripped = line_text.strip()
+            if stripped.startswith('#') and len(stripped) > 1:
+                # Only flag if the *entire* meaningful content is comments
+                # (i.e., no code before the # on that line)
+                hash_pos = line_text.find('#')
+                if hash_pos >= 0 and not line_text[:hash_pos].strip():
+                    if len(line_text) > max_len:
+                        violations.append(lineno)
+                        seen_lines.add(lineno)
+    return violations
+
+
 def strip_emojis(filepath, rules, dry_run=False, show=False):
     """AR031/AR032: Remove emojis and replace decorative text. Returns violations."""
     file_path = Path(filepath)
@@ -433,14 +469,15 @@ def strip_repeated_comments(filepath, rules=frozenset(), dry_run=False, show=Fal
 
 
 def process_file(args, filepath, effective_rules, und_codes_all,
-                 blk_codes_all, cmt_rules_active, emj_codes_all):
+                 blk_codes_all, cmt_rules_active, emj_codes_all,
+                 gap=3, comment_len=79):
     """Run all active rules on a file and report violations to stdout."""
     und_active = effective_rules & set(und_codes_all)
     blk_active = effective_rules & set(blk_codes_all)
     cmt_active = effective_rules & cmt_rules_active
     emj_active = effective_rules & set(emj_codes_all)
     changed = False
-    violations_reported: list[tuple[int, str]] = []
+    violations_reported = []
     if und_active:
         for lineno, rule_code in strip_underscores(
             Path(filepath), und_active, not args.fix, args.show,
@@ -451,7 +488,7 @@ def process_file(args, filepath, effective_rules, und_codes_all,
     if blk_active:
         for lineno, rule_code in fix_blanks(
             Path(filepath), blk_active,
-            args.blank_lines_gap, not args.fix, args.show,
+            gap, not args.fix, args.show,
         ):
             violations_reported.append(
                 (lineno, f'{rule_code} ({get_rule_group(rule_code)})'),
@@ -468,6 +505,15 @@ def process_file(args, filepath, effective_rules, und_codes_all,
             Path(filepath), effective_rules, not args.fix, args.show,
         ):
             violations_reported.append((ln, 'AR021 (comments)'))
+    # AR022 is error-only (no auto-fix)
+    ar022_active = bool(effective_rules & {'AR022'})
+    if ar022_active:
+        for ln in check_comment_line_length(
+            Path(filepath), effective_rules, comment_len,
+        ):
+            violations_reported.append(
+                (ln, 'AR022 (comments)'),
+            )
     # Print all violations in standard pre-commit format
     if violations_reported:
         changed = True
@@ -487,6 +533,7 @@ def run():
     parser.add_argument('--remove-blank-lines', '--blanks',
                         action='store_true', default=False, dest='blank_s')
     parser.add_argument('--blank-lines-gap', type=int, default=3)
+    parser.add_argument('--comment-lines-max', type=int, default=79)
     parser.add_argument('--fix', action='store_true',
                         help='Actually make changes. Default is to show diff.')
     parser.add_argument('--show', action='store_true',
@@ -530,13 +577,17 @@ def run():
     blk_codes_all = set(expand_shorthand('blanks'))
     emj_codes_all = set(expand_shorthand('emojis'))
     cmt_rules_active = {'AR021'}
+    cfg_path = '.'  # CWD for options config (not script dir).
+    # Resolve config options from pyproject.toml / tox.ini when CLI default used.
+    gap = read_max_gap(args.blank_lines_gap, cfg_path)
+    comment_len = read_comment_max(args.comment_lines_max, cfg_path)
 
     for filepath in args.files:
         if not str(filepath).endswith('.py'):
             continue
         changed = changed or process_file(
             args, filepath, effective_rules, und_codes_all, blk_codes_all,
-            cmt_rules_active, emj_codes_all)
+            cmt_rules_active, emj_codes_all, gap, comment_len)
     sys.exit(1 if changed else 0)
 
 

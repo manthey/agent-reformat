@@ -30,6 +30,9 @@ The hook exposes individual rule codes for granular control. You can activate sp
 | `AR015` | Blank lines  | Normalize trailing blank lines at end of file (PEP-8 E305/E306).           |
 | `AR016` | Blank lines  | Remove blank lines surrounding comments.                                    |
 | `AR021` | Comments     | Remove comment-only lines repeating 4+ identical non-whitespace chars.      |
+| `AR022` | Comments     | Enforce max line length on **comment-only** lines (error only, no auto-fix).
+### Note for **AR022**: Lines exceeding the configured maximum must be manually rewrapped
+by users or agents into shorter multi-line comments or shortened entirely.          |
 | `AR031` | Emojis       | Remove emoji characters.                                                    |
 | `AR032` | Emojis       | Replace decorative text with plain versions.                                |
 
@@ -76,6 +79,10 @@ emojis = true
 
 # or use shorthand names as strings:
 rules = ["blanks"]
+
+# Configuration options (also via tox.ini):
+blank_lines_gap = 3         # min gap between blank lines (AR012)
+comment_lines_max = 79      # max length for comment-only lines (AR022)
 ```
 
 **tox.ini** (legacy fallback, only used when pyproject.toml doesn't provide anything):
@@ -83,3 +90,7 @@ rules = ["blanks"]
 [agent-reformat]
 ; Comma-separated rule codes only (shorthands not supported)
 rules = AR014,AR015
+
+; Configuration options:
+blank_lines_gap = 3         ; min gap between blank lines (AR012)
+comment_lines_max = 79      ; max length for comment-only lines (AR022)
