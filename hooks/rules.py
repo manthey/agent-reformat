@@ -29,11 +29,16 @@ RULE_CATALOG: dict[str, dict[str, str]] = {
     'AR021': {'group': 'comments',
               'desc': 'Remove comment-only lines repeating 4+'
                        ' identical non-whitespace chars.'},
+    'AR031': {'group': 'emojis',
+              'desc': 'Remove emoji characters.'},
+    'AR032': {'group': 'emojis',
+              'desc': 'Replace decorative text with plain versions.'},
 }
 
 GROUPS: dict[str, tuple[str, ...]] = {
     'underscores': ('AR001', 'AR002', 'AR003'),
     'blanks': ('AR011', 'AR012', 'AR013', 'AR014', 'AR015'),
+    'emojis': ('AR031', 'AR032'),
 }
 
 

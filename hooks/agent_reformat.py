@@ -28,6 +28,26 @@ resolve_rules = rules.resolve_rules
 expand_codes = rules.expand_codes
 get_rule_group = rules.get_rule_group
 
+SUPP_EMOJI_RANGES = [
+    (0x1F300, 0x1F9FF),  # Misc symbols, emoticons, transport
+    (0x1FA00, 0x1FAFF),  # Chess, shapes, symbols extended
+    (0x1F000, 0x1F02F),  # Games
+    (0x1F0A0, 0x1F0FF),  # Playing cards
+]
+BMP_PATTERNS = [
+    '\u2600-\u27BF',       # Misc symbols, dingbats
+    '\uFE00-\uFE0F',       # Variation selectors
+    '\u2460-\u24FF',       # Circled letters
+    '\u2500-\u259F',       # Box drawing, block elements
+    '\u2190-\u21FF',       # Arrows
+    '\uFE0F',              # Variation selector 16
+    '\u2610\u2611\u2612',  # Checkboxes
+    '\u25C9\u25CB\u25CF',  # Radio-button bullets
+    '\u25B6\u25B7\u25BA',  # Decorative arrow bullets
+    '\u2022\u2023\u2043',  # Fancy bullets
+]
+bmp_re = re.compile('|'.join(f'[{p}]' for p in BMP_PATTERNS))
+
 
 def has_noqa(line, rules=frozenset()):
     """Return True if line has a proper # noqa directive for any of rules.
@@ -293,6 +313,75 @@ def fix_blanks(filepath, rules, min_gap=3, dry_run=False, show=False):  # noqa
     return []
 
 
+def is_emoji_char(c):
+    """Check if a character matches emoji ranges (excluding deco text)."""
+    cp = ord(c)
+    # Decorative text chars are NOT emojis per user spec
+    if cp in (0x2713, 0x2717, 0x2718):
+        return False
+    # Supplementary-plane ranges
+    for lo, hi in SUPP_EMOJI_RANGES:
+        if lo <= cp <= hi:
+            return True
+    # BMP patterns
+    return bool(bmp_re.match(c))
+
+
+def has_genuine_emoji(line_text):
+    """Return True if line contains actual emoji (not only deco-text)."""
+    for c in line_text:
+        cp = ord(c)
+        if cp >= 0x10000:
+            for lo, hi in SUPP_EMOJI_RANGES:
+                if lo <= cp <= hi:
+                    return True
+        elif bmp_re.match(c):
+            # BMP match: check if it's deco text (not emoji) or genuine emoji
+            if cp not in (0x2713, 0x2717, 0x2718):
+                return True
+    return False
+
+
+def strip_emojis(filepath, rules, dry_run=False, show=False):
+    """AR031/AR032: Remove emojis and replace decorative text. Returns violations."""
+    file_path = Path(filepath)
+    with open(file_path, encoding='utf-8', newline='') as f:
+        source = f.read()
+    # Decorative-text replacements (AR032) - replace before emoji removal
+    deco_replacements = {
+        '\u2713': '+',   # check mark to plain +
+        '\u2717': 'x',   # ballot X to plain x
+        '\u2718': 'x',   # heavy ballot X to plain x
+    }
+    new_source = source
+    for deco_char, repl in deco_replacements.items():
+        new_source = new_source.replace(deco_char, repl)
+    # Remove emoji characters
+    removed = ''.join(
+        '' if is_emoji_char(c) else c for c in new_source
+    )
+
+    changed = removed != source
+    violations = []
+    if changed:
+        if 'AR031' in rules:
+            old_lines = source.splitlines()
+            for i, old_line in enumerate(old_lines, 1):
+                if has_genuine_emoji(old_line) and i <= len(removed.splitlines()):
+                    if removed.splitlines()[i - 1] != old_line:
+                        violations.append((i, 'AR031'))
+        if 'AR032' in rules:
+            for i, line in enumerate(source.splitlines(), 1):
+                if any(dc in line for dc in deco_replacements):
+                    violations.append((i, 'AR032'))
+        if show:
+            print(removed.rstrip())
+        if not dry_run:
+            with open(file_path, 'w', encoding='utf-8', newline='') as fw:
+                fw.write(removed)
+    return violations
+
+
 def strip_repeated_comments(filepath, rules=frozenset(), dry_run=False, show=False):
     """AR021: Remove lines with cluttered repeated-char comments. Returns line nums."""
     file_path = Path(filepath)
@@ -328,11 +417,12 @@ def strip_repeated_comments(filepath, rules=frozenset(), dry_run=False, show=Fal
 
 
 def process_file(args, filepath, effective_rules, und_codes_all,
-                 blk_codes_all, cmt_rules_active):
+                 blk_codes_all, cmt_rules_active, emj_codes_all):
     """Run all active rules on a file and report violations to stdout."""
     und_active = effective_rules & set(und_codes_all)
     blk_active = effective_rules & set(blk_codes_all)
     cmt_active = effective_rules & cmt_rules_active
+    emj_active = effective_rules & set(emj_codes_all)
     changed = False
     violations_reported: list[tuple[int, str]] = []
     if und_active:
@@ -350,6 +440,13 @@ def process_file(args, filepath, effective_rules, und_codes_all,
             violations_reported.append(
                 (lineno, f'{rule_code} ({get_rule_group(rule_code)})'),
             )
+    if emj_active:
+        for lineno, rule_code in strip_emojis(
+            Path(filepath), effective_rules, not args.fix, args.show,
+        ):
+            violations_reported.append(
+                (lineno, f'{rule_code} ({get_rule_group(rule_code)})'),
+            )
     if cmt_active:
         for ln in strip_repeated_comments(
             Path(filepath), effective_rules, not args.fix, args.show,
@@ -358,11 +455,8 @@ def process_file(args, filepath, effective_rules, und_codes_all,
     # Print all violations in standard pre-commit format
     if violations_reported:
         changed = True
-        lines_seen = set()
         for lineno, desc in sorted(violations_reported):
-            if lineno not in lines_seen:
-                print(f'{filepath}:{lineno}: {desc}')
-                lines_seen.add(lineno)
+            print(f'{filepath}:{lineno}: {desc}')
     return changed
 
 
@@ -392,7 +486,10 @@ def run():
         for r in args.rules.replace(';', ',').split(','):
             t = r.strip().upper()
             if t:
-                cli_raw.update(expand_codes(t))
+                try:
+                    cli_raw.update(expand_shorthand(t.lower()))
+                except ValueError:
+                    cli_raw.update(expand_codes(t))
     if not cli_raw and (args.und_s or args.blank_s):
         und_codes = set(expand_shorthand('underscores'))
         blk_codes = set(expand_shorthand('blanks'))
@@ -415,6 +512,7 @@ def run():
     changed = False
     und_codes_all = set(expand_shorthand('underscores'))
     blk_codes_all = set(expand_shorthand('blanks'))
+    emj_codes_all = set(expand_shorthand('emojis'))
     cmt_rules_active = {'AR021'}
 
     for filepath in args.files:
@@ -422,7 +520,7 @@ def run():
             continue
         changed = changed or process_file(
             args, filepath, effective_rules, und_codes_all, blk_codes_all,
-            cmt_rules_active)
+            cmt_rules_active, emj_codes_all)
     sys.exit(1 if changed else 0)
 
 
