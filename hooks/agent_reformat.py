@@ -35,7 +35,7 @@ def has_noqa(line, rules=frozenset()):
     ``# noqa:[AR0XX]``. Does NOT match comments that just contain the word
     "noqa" in regular prose.
     """
-    hash_pos = line.find("#")
+    hash_pos = line.find('#')
     if hash_pos < 0:
         return False
     # Look for "noqa" at start of comment text (with optional whitespace)
@@ -51,13 +51,13 @@ def has_noqa(line, rules=frozenset()):
     # Strip leading colon/bracket chars before examining content
     cleaned = re.sub(r'^[ :\[]+', '', after_noqa).rstrip(' ]')
 
-    # Check for bracket syntax or code-like text 
+    # Check for bracket syntax or code-like text
     if ']' in cleaned and cleaned.index(']') > 0:
         codes_text = cleaned[:cleaned.index(']')]
     elif re.match(r'[A-Z][A-Z\s\d]*', cleaned, re.IGNORECASE):
         codes_text = cleaned
     else:
-        # Text doesn't look like codes -> bare noqa  
+        # Text doesn't look like codes -> bare noqa
         return True
     if not codes_text.strip():
         return True
@@ -99,7 +99,7 @@ def strip_underscores(filepath, rules, dry_run=False, show=False):
         tree = ast.parse(source)
     except SyntaxError:
         return False
-    usages = {}       # noqa lines per identifier
+    usages = {}       # lines per identifier
     for node in ast.walk(tree):
         if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
             usages.setdefault(node.id, []).append(getattr(node, 'lineno', None))
@@ -111,7 +111,8 @@ def strip_underscores(filepath, rules, dry_run=False, show=False):
     active_underscore_rules = set(rules) & set(underscore_codes)
     if not active_underscore_rules:
         return False
-    def _is_protected(ident, kind, lineno):
+
+    def is_protected(ident, kind, lineno):
         """Return True if identifier should NOT be stripped."""
         kept = False
         for r in active_underscore_rules:
@@ -128,12 +129,12 @@ def strip_underscores(filepath, rules, dry_run=False, show=False):
         if not kept:
             return False  # Not a candidate for stripping at all
         lines = source.splitlines()
-        # 1. Check definition line for ``# noqa``
+        # 1. Check definition line for ````
         def_line_lineno = lineno - 1
         if 0 <= def_line_lineno < len(lines):
             if has_noqa(lines[def_line_lineno], active_underscore_rules):
                 return True
-        # 2. Check all usage lines (Load nodes) for matching ``# noqa``
+        # 2. Check all usage lines (Load nodes) for matching ````
         if usages.get(ident):
             for ln in usages[ident]:
                 if ln is None:
@@ -150,7 +151,7 @@ def strip_underscores(filepath, rules, dry_run=False, show=False):
             continue
         if usages.get(ident, 0) == 0:
             continue
-        if _is_protected(ident, kind, lineno):
+        if is_protected(ident, kind, lineno):
             continue
         replacements[ident] = ident.lstrip('_')
     if not replacements:
@@ -212,7 +213,7 @@ def fix_blanks(filepath, rules, min_gap=3, dry_run=False, show=False):
                 ci = curr_text.startswith(('import ', 'from '))
                 keep_for_imports = (
                     'AR013' in active_rules and ((pi and not ci) or
-                                                  (pi and ci)))
+                                                 (pi and ci)))
                 keep_for_outdent = False
                 if 'AR014' in active_rules and prev_indent > curr_indent:
                     for lvl in range(curr_indent + 4,
@@ -286,7 +287,7 @@ def strip_repeated_comments(filepath, rules=frozenset(), dry_run=False, show=Fal
             continue
         # Extract comment part (everything after the first '#')
         _, _, comment_rest = line.partition('#')
-        # Honor ``# noqa`` on the whole line.
+        # Honor ```` on the whole line.
         if has_noqa(line, rules):
             new_lines.append(line)
             continue

@@ -7,27 +7,27 @@ from pathlib import Path
 
 RULE_CATALOG: dict[str, dict[str, str]] = {
     'AR001': {'group': 'underscores',
-               'desc': 'Strip single leading underscores from '
+              'desc': 'Strip single leading underscores from '
                        'modules-level variables.'},
     'AR002': {'group': 'underscores',
-               'desc': 'Strip single leading underscores from '
+              'desc': 'Strip single leading underscores from '
                        'top-level functions.'},
     'AR003': {'group': 'underscores',
-               'desc': 'Strip single leading underscores from methods.'},
+              'desc': 'Strip single leading underscores from methods.'},
     'AR011': {'group': 'blanks',
-               'desc': 'Collapse multiple consecutive blanks '
+              'desc': 'Collapse multiple consecutive blanks '
                        'before def/class/decorator.'},
     'AR012': {'group': 'blanks',
-               'desc': 'Enforce minimum code-line gap between blanks.'},
+              'desc': 'Enforce minimum code-line gap between blanks.'},
     'AR013': {'group': 'blanks',
-               'desc': 'Preserve blank lines separating import blocks.'},
+              'desc': 'Preserve blank lines separating import blocks.'},
     'AR014': {'group': 'blanks',
-               'desc': 'Preserve blank lines when outdenting '
+              'desc': 'Preserve blank lines when outdenting '
                        'from blocks.'},
     'AR015': {'group': 'blanks',
-               'desc': 'Normalize trailing blank lines at end of file.'},
+              'desc': 'Normalize trailing blank lines at end of file.'},
     'AR021': {'group': 'comments',
-               'desc': 'Remove comment-only lines repeating 4+'
+              'desc': 'Remove comment-only lines repeating 4+'
                        ' identical non-whitespace chars.'},
 }
 
