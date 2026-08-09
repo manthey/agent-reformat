@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import argparse
 import ast
+import io
 import re
 import sys
+import tokenize
 from pathlib import Path
 
 try:
@@ -386,26 +388,41 @@ def strip_repeated_comments(filepath, rules=frozenset(), dry_run=False, show=Fal
     """AR021: Remove lines with cluttered repeated-char comments. Returns line nums."""
     file_path = Path(filepath)
     with open(file_path, encoding='utf-8', newline='') as f:
-        lines = f.readlines()
-    new_lines = []
-    changed = False
-    violations = []  # line numbers (1-based) of removed comment lines
-    for idx, line in enumerate(lines):
-        if '#' not in line:
-            new_lines.append(line)
-            continue
-        # Extract comment part (everything after the first '#')
-        _, _, comment_rest = line.partition('#')
-        if has_noqa(line, rules):
-            new_lines.append(line)
-            continue
-        # Check for 4+ identical non-whitespace characters in the comment itself
-        if re.search(r'(\S)\1{3,}', comment_rest):
-            violations.append(idx + 1)
-            changed = True
-            continue  # Remove the entire cluttered comment line
-        new_lines.append(line)
-    new_source = ''.join(new_lines)
+        source = f.read()
+    # We parse the entire token stream to strictly distinguish real comments
+    try:
+        tokens = list(tokenize.generate_tokens(io.StringIO(source).readline))
+    except tokenize.TokenizeError:
+        return []
+    violations = []  # line numbers (1-based)
+    seen_lines = set()
+
+    # Iterate the global token stream: we ONLY care if a line's first meaningful token is a COMMENT.
+    for tok in tokens:
+        if tok.type == tokenize.COMMENT:
+            lineno = tok.start[0]
+            if lineno in seen_lines:
+                continue
+            lines = source.split('\n')
+            line_text = lines[lineno - 1]
+
+            # Check for "" directive (skip if present)
+            if has_noqa(line_text, rules):
+                seen_lines.add(lineno)
+                continue
+            # Extract the comment content based on token position
+            start_col = tok.start[1] + 1  # +1 for the '#' itself
+            comment_part = line_text[start_col - 1:]
+
+            # Check for repetition of ANY non-whitespace character (letters, digits, or symbols)
+            if re.search(r'(\S)\1{3,}', comment_part):
+                violations.append(lineno)
+                seen_lines.add(lineno)
+    # Apply removals
+    lines = source.split('\n')
+    new_source = '\n'.join(line for i, line in enumerate(lines, 1) if i not in violations)
+
+    changed = (new_source != source)
     if changed:
         if show:
             print(new_source.rstrip())
