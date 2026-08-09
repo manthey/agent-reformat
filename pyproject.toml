@@ -1,22 +1,24 @@
 [build-system]
-requires = ["setuptools>=61"]
+requires = ["setuptools>=61", "setuptools-scm[toml]>=8.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "manthey-precommit-hooks"
-version = "0.2.0"
 description = "Clean, zero-overhead pre-commit hooks for AI-generated code."
 readme = "README.md"
 license = {text = "MIT"}
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = []
+dynamic = ["version"]
+
+[tool.setuptools_scm]
 
 [project.scripts]
 agent-reformat = "hooks.agent_reformat:run"
 
 [tool.setuptools.packages.find]
 where = ["."]
-included = ["hooks"]
+include = ["hooks*"]
 
 [tool.agent-reformat]
-rules = ["AR011", "AR012"]
+rules = ["AR"]
