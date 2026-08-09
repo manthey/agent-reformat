@@ -88,19 +88,8 @@ def expand_shorthand(name: str) -> tuple[str, ...]:
     return tuple(codes)
 
 
-def rules_from_pyproject(path: str | Path) -> set[str] | None:
-    """Read *[tool.agent-reformat.rules]* from pyproject.toml."""
-    toml_path = Path(path) / 'pyproject.toml'
-    if not toml_path.is_file():
-        return None
-    with open(toml_path, 'rb') as fh:
-        cfg = tomllib.load(fh)
-    section = (cfg.get('tool', {}) or {}).get('agent-reformat')
-    if not isinstance(section, dict):
-        return None
+def find_rules_from_section(raw_rules):
     found: set[str] = set()
-
-    raw_rules = section.get('rules')
     if isinstance(raw_rules, list):
         for item in raw_rules:
             if isinstance(item, str):
@@ -117,13 +106,27 @@ def rules_from_pyproject(path: str | Path) -> set[str] | None:
             except ValueError:
                 try:
                     found.update(expand_codes(raw_rules))
-                except ValueError as exc_2x:
+                except ValueError as exc:
                     avail = ', '.join(sorted(RULE_CATALOG.keys()))
                     msg = (
                         f"Unknown shorthand '{raw_rules}'. "
                         f'Valid: {list(GROUPS.keys())} Available: {avail}'
                     )
-                    raise ValueError(msg) from exc_2x
+                    raise ValueError(msg) from exc
+    return found
+
+
+def rules_from_pyproject(path: str | Path) -> set[str] | None:
+    """Read *[tool.agent-reformat.rules]* from pyproject.toml."""
+    toml_path = Path(path) / 'pyproject.toml'
+    if not toml_path.is_file():
+        return None
+    with open(toml_path, 'rb') as fh:
+        cfg = tomllib.load(fh)
+    section = (cfg.get('tool', {}) or {}).get('agent-reformat')
+    if not isinstance(section, dict):
+        return None
+    found = find_rules_from_section(section.get('rules'))
     for key in GROUPS:
         val = section.get(key)
         if not val:
@@ -147,7 +150,7 @@ def rules_from_pyproject(path: str | Path) -> set[str] | None:
 
 
 def rules_from_tox(path: str | Path) -> set[str] | None:
-    """Read *[agent-reformat]* section from tox.ini (legacy config)."""
+    """Read *[agent-reformat]* section from tox.ini."""
     ini_path = Path(path) / 'tox.ini'
     if not ini_path.is_file():
         return None

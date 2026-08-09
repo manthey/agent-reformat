@@ -29,7 +29,7 @@ expand_codes = rules.expand_codes
 
 
 def has_noqa(line, rules=frozenset()):
-    r"""Return True if line has a proper ``# noqa`` directive for any of *rules*.
+    """Return True if line has a proper # noqa directive for any of rules.
 
     A "proper" directive: ``# noqa`` (bare), ``# noqa AR0XX``, or
     ``# noqa:[AR0XX]``. Does NOT match comments that just contain the word
@@ -90,6 +90,37 @@ def collect_definitions_by_type(tree):
     return result
 
 
+def is_protected(active_underscore_rules, source, usages, ident, kind, lineno):
+    """Return True if identifier should NOT be stripped."""
+    kept = False
+    for r in active_underscore_rules:
+        entry = lookup(r)
+        g = entry.get('group') or ''
+        code = (entry.get('code') or '').upper()
+        if g == 'underscores':
+            if kind == 'variable' and code == 'AR001':
+                kept = True
+            elif kind == 'function' and code == 'AR002':
+                kept = True
+            elif kind == 'method' and code == 'AR003':
+                kept = True
+    if not kept:
+        return False  # Not a candidate for stripping at all
+    lines = source.splitlines()
+    def_line_lineno = lineno - 1
+    if 0 <= def_line_lineno < len(lines):
+        if has_noqa(lines[def_line_lineno], active_underscore_rules):
+            return True
+    if usages.get(ident):
+        for ln in usages[ident]:
+            if ln is None:
+                continue
+            if 0 <= ln - 1 < len(lines):
+                if has_noqa(lines[ln - 1], active_underscore_rules):
+                    return True
+    return False
+
+
 def strip_underscores(filepath, rules, dry_run=False, show=False):
     """Strip underscores per AR001-003 rules."""
     file_path = Path(filepath)
@@ -111,47 +142,12 @@ def strip_underscores(filepath, rules, dry_run=False, show=False):
     active_underscore_rules = set(rules) & set(underscore_codes)
     if not active_underscore_rules:
         return False
-
-    def is_protected(ident, kind, lineno):
-        """Return True if identifier should NOT be stripped."""
-        kept = False
-        for r in active_underscore_rules:
-            entry = lookup(r)
-            g = entry.get('group') or ''
-            code = (entry.get('code') or '').upper()
-            if g == 'underscores':
-                if kind == 'variable' and code == 'AR001':
-                    kept = True
-                elif kind == 'function' and code == 'AR002':
-                    kept = True
-                elif kind == 'method' and code == 'AR003':
-                    kept = True
-        if not kept:
-            return False  # Not a candidate for stripping at all
-        lines = source.splitlines()
-        # 1. Check definition line for ````
-        def_line_lineno = lineno - 1
-        if 0 <= def_line_lineno < len(lines):
-            if has_noqa(lines[def_line_lineno], active_underscore_rules):
-                return True
-        # 2. Check all usage lines (Load nodes) for matching ````
-        if usages.get(ident):
-            for ln in usages[ident]:
-                if ln is None:
-                    continue
-                if 0 <= ln - 1 < len(lines):
-                    if has_noqa(lines[ln - 1], active_underscore_rules):
-                        return True
-        return False
-
     for ident, kind, lineno in raw_defs:
-        if not ident.startswith('_') or ident.startswith('__'):
-            continue
-        if ident.endswith('_'):
+        if not ident.startswith('_') or ident.startswith('__') or ident.endswith('_'):
             continue
         if usages.get(ident, 0) == 0:
             continue
-        if is_protected(ident, kind, lineno):
+        if is_protected(active_underscore_rules, source, usages, ident, kind, lineno):
             continue
         replacements[ident] = ident.lstrip('_')
     if not replacements:
@@ -168,7 +164,7 @@ def strip_underscores(filepath, rules, dry_run=False, show=False):
     return True
 
 
-def fix_blanks(filepath, rules, min_gap=3, dry_run=False, show=False):
+def fix_blanks(filepath, rules, min_gap=3, dry_run=False, show=False):  # noqa
     """Apply AR011-015 to clean up blank lines."""
     active_rules = set(rules) if rules else set()
 
@@ -287,7 +283,6 @@ def strip_repeated_comments(filepath, rules=frozenset(), dry_run=False, show=Fal
             continue
         # Extract comment part (everything after the first '#')
         _, _, comment_rest = line.partition('#')
-        # Honor ```` on the whole line.
         if has_noqa(line, rules):
             new_lines.append(line)
             continue
@@ -307,10 +302,39 @@ def strip_repeated_comments(filepath, rules=frozenset(), dry_run=False, show=Fal
     return True
 
 
+def process_file(args, filepath, effective_rules, und_codes_all,
+                 blk_codes_all, cmt_rules_active):
+    und_active = effective_rules & set(und_codes_all)
+    blk_active = effective_rules & set(blk_codes_all)
+    cmt_active = effective_rules & cmt_rules_active
+    changed = False
+    if und_active:
+        if strip_underscores(Path(filepath), und_active,
+                             not args.fix, args.show):
+            print(f'AR001-003 – stripped leading underscores '
+                  f'from {filepath}')
+            changed = True
+    if blk_active:
+        if fix_blanks(Path(filepath), blk_active,
+                      args.blank_lines_gap, not args.fix, args.show):
+            rule_list = ','.join(sorted(blk_active))
+            print(f'{rule_list} – stripped excessive blanks '
+                  f'from {filepath}')
+            changed = True
+    if cmt_active:
+        if strip_repeated_comments(Path(filepath), effective_rules, not args.fix,
+                                   args.show):
+            rule_list = ','.join(sorted(cmt_active))
+            print(f'{rule_list} – stripped cluttered comments '
+                  f'from {filepath}')
+            changed = True
+    return changed
+
+
 def run():
     """CLI entry point."""
     parser = argparse.ArgumentParser(
-        description='Reformat excessive artifacts (e.g., leading underscores, whitespace) from generated Python code.',
+        description='Reformat excessive artifacts from generated Python code.',
     )
     parser.add_argument('files', nargs='+', help='List of .py files to process.')
     parser.add_argument('--remove-underscores', '--underscores',
@@ -333,11 +357,7 @@ def run():
         for r in args.rules.replace(';', ',').split(','):
             t = r.strip().upper()
             if t:
-                try:
-                    cli_raw.update(expand_codes(t))
-                except ValueError as exc:
-                    print(f'Error: {exc}', file=sys.stderr)
-                    sys.exit(2)
+                cli_raw.update(expand_codes(t))
     if not cli_raw and (args.und_s or args.blank_s):
         und_codes = expand_shorthand('underscores') or ('AR001', 'AR002',
                                                         'AR003')
@@ -351,10 +371,7 @@ def run():
     # Fallback to pyproject.toml / tox.ini when no CLI flags given at all.
     if not cli_raw:
         cfg_path = str(Path(__file__).resolve().parent.parent)
-        try:
-            resolved_cfg = resolve_rules(cli_raw, cfg_path) or set()
-        except Exception:
-            resolved_cfg = set()
+        resolved_cfg = resolve_rules(cli_raw, cfg_path) or set()
         tox_cfg = (getattr(rules, 'rules_from_tox', lambda p: None)(cfg_path) or
                    set()) if hasattr(rules, 'rules_from_tox') else set()
         if resolved_cfg or tox_cfg:
@@ -362,47 +379,21 @@ def run():
     effective_rules = validate_rules(cli_raw)
 
     if not effective_rules:
-        return  # Nothing to do.
+        return
     changed = False
     und_codes_all = expand_shorthand('underscores') or ('AR001', 'AR002',
                                                         'AR003')
     blk_codes_all = expand_shorthand('blanks') or ('AR011', 'AR012',
                                                    'AR013', 'AR014',
                                                    'AR015')
-    cmt_rules_active = {'AR021'}  # Explicit code for repeated comment removal
+    cmt_rules_active = {'AR021'}
 
     for filepath in args.files:
         if not str(filepath).endswith('.py'):
             continue
-        try:
-            und_active = effective_rules & set(und_codes_all)
-            blk_active = effective_rules & set(blk_codes_all)
-            cmt_active = effective_rules & cmt_rules_active
-
-            if und_active:
-                if strip_underscores(Path(filepath), und_active,
-                                     not args.fix, args.show):
-                    print(f'AR001-003 – stripped leading underscores '
-                          f'from {filepath}')
-                    changed = True
-            if blk_active:
-                if fix_blanks(Path(filepath), blk_active,
-                              args.blank_lines_gap, not args.fix, args.show):
-                    rule_list = ','.join(sorted(blk_active))
-                    print(f'{rule_list} – stripped excessive blanks '
-                          f'from {filepath}')
-                    changed = True
-            if cmt_active:
-                if strip_repeated_comments(Path(filepath), effective_rules, not args.fix,
-                                           args.show):
-                    rule_list = ','.join(sorted(cmt_active))
-                    print(f'{rule_list} – stripped cluttered comments '
-                          f'from {filepath}')
-                    changed = True
-        except Exception:
-            import traceback as _tb
-            print(f'Failed to process {filepath}: ', file=sys.stderr)
-            _tb.print_exc(file=sys.stderr)
+        changed = changed or process_file(
+            args, filepath, effective_rules, und_codes_all, blk_codes_all,
+            cmt_rules_active)
     sys.exit(1 if changed else 0)
 
 
