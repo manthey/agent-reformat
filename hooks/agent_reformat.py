@@ -26,6 +26,7 @@ expand_shorthand = rules.expand_shorthand
 validate_rules = rules.validate_rules
 resolve_rules = rules.resolve_rules
 expand_codes = rules.expand_codes
+get_rule_group = rules.get_rule_group
 
 
 def has_noqa(line, rules=frozenset()):
@@ -122,14 +123,14 @@ def is_protected(active_underscore_rules, source, usages, ident, kind, lineno):
 
 
 def strip_underscores(filepath, rules, dry_run=False, show=False):
-    """Strip underscores per AR001-003 rules."""
+    """Strip underscores per AR001-003 rules. Returns list of (lineno, ident) for violations."""
     file_path = Path(filepath)
     with open(file_path, encoding='utf-8', newline='') as f:
         source = f.read()
     try:
         tree = ast.parse(source)
     except SyntaxError:
-        return False
+        return []
     usages = {}       # lines per identifier
     for node in ast.walk(tree):
         if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
@@ -141,7 +142,8 @@ def strip_underscores(filepath, rules, dry_run=False, show=False):
         'AR001', 'AR002', 'AR003')
     active_underscore_rules = set(rules) & set(underscore_codes)
     if not active_underscore_rules:
-        return False
+        return []
+    violations = []
     for ident, kind, lineno in raw_defs:
         if not ident.startswith('_') or ident.startswith('__') or ident.endswith('_'):
             continue
@@ -150,8 +152,10 @@ def strip_underscores(filepath, rules, dry_run=False, show=False):
         if is_protected(active_underscore_rules, source, usages, ident, kind, lineno):
             continue
         replacements[ident] = ident.lstrip('_')
-    if not replacements:
-        return False
+        violations.append(
+            (lineno, {'variable': 'AR001', 'function': 'AR002', 'method': 'AR003'}[kind]))
+    if not violations:
+        return []
     new_source = source
     for old, new in sorted(replacements.items(), key=len, reverse=True):
         pattern = r'\b' + re.escape(old) + r'\b'
@@ -161,11 +165,11 @@ def strip_underscores(filepath, rules, dry_run=False, show=False):
     if not dry_run:
         with open(file_path, 'w', encoding='utf-8', newline='') as f:
             f.write(new_source)
-    return True
+    return violations
 
 
 def fix_blanks(filepath, rules, min_gap=3, dry_run=False, show=False):  # noqa
-    """Apply AR011-015 to clean up blank lines."""
+    """Apply AR011-015 to clean up blank lines. Returns violations."""
     active_rules = set(rules) if rules else set()
 
     with open(filepath, encoding='utf-8', newline='') as f:
@@ -173,6 +177,7 @@ def fix_blanks(filepath, rules, min_gap=3, dry_run=False, show=False):  # noqa
     line_end = '\r\n' if '\r\n' in source else '\n'
     lines = source.splitlines(keepends=True)
     output = []
+    violations = []  # (lineno, rule_code) per blank line to remove
     pending_blank = False
     code_lines_since_blank = 0
     consecutive_blanks = 0
@@ -181,8 +186,9 @@ def fix_blanks(filepath, rules, min_gap=3, dry_run=False, show=False):  # noqa
     indent_cause = {0: 'other'}
     gap = min_gap
 
-    for line in lines:
+    for idx, line in enumerate(lines):
         curr_text = line.strip()
+        curr_lineno = idx + 1
         curr_indent = len(line) - len(line.lstrip())
 
         if not curr_text:
@@ -235,7 +241,13 @@ def fix_blanks(filepath, rules, min_gap=3, dry_run=False, show=False):  # noqa
                     pass
                 elif outdented_to_top and has_many:
                     output.append(line_end + line_end)
+                    violations.extend((curr_lineno - consecutive_blanks + i, 'AR011')
+                                      for i in range(consecutive_blanks))
                 elif should_keep:
+                    # Record AR012 violation for blank lines kept due to gap rule
+                    if gap_reached and same_indent and 'AR012' in active_rules:
+                        violations.extend((curr_lineno - consecutive_blanks + i, 'AR012')
+                                          for i in range(consecutive_blanks))
                     output.append(line_end)
                     code_lines_since_blank = 0
             consecutive_blanks = 0
@@ -258,26 +270,38 @@ def fix_blanks(filepath, rules, min_gap=3, dry_run=False, show=False):  # noqa
         if last_def_class or has_many:
             output.append(line_end + line_end)
         elif active_rules & {'AR015'}:
+            violations.extend((idx - consecutive_blanks + i, 'AR015')
+                              for i in range(consecutive_blanks))
             output.append(line_end)
     new_source = ''.join(output)
-    if new_source == source:
-        return False
-    if show:
-        print(new_source.rstrip())
-    if not dry_run:
-        with open(filepath, 'w', encoding='utf-8', newline='') as f:
-            f.write(new_source)
-    return True
+    changed = new_source != source
+    if changed and violations:
+        if show:
+            print(new_source.rstrip())
+        if not dry_run:
+            with open(filepath, 'w', encoding='utf-8', newline='') as f:
+                f.write(new_source)
+        return violations
+    if changed:
+        # Changes made but no specific blank violations (e.g. indentation changes)
+        if show:
+            print(new_source.rstrip())
+        if not dry_run:
+            with open(filepath, 'w', encoding='utf-8', newline='') as f:
+                f.write(new_source)
+        return []
+    return []
 
 
 def strip_repeated_comments(filepath, rules=frozenset(), dry_run=False, show=False):
-    """AR021: Remove lines containing comments that repeat 4+ non-whitespace chars."""
+    """AR021: Remove lines with cluttered repeated-char comments. Returns line nums."""
     file_path = Path(filepath)
     with open(file_path, encoding='utf-8', newline='') as f:
         lines = f.readlines()
     new_lines = []
     changed = False
-    for line in lines:
+    violations = []  # line numbers (1-based) of removed comment lines
+    for idx, line in enumerate(lines):
         if '#' not in line:
             new_lines.append(line)
             continue
@@ -288,46 +312,57 @@ def strip_repeated_comments(filepath, rules=frozenset(), dry_run=False, show=Fal
             continue
         # Check for 4+ identical non-whitespace characters in the comment itself
         if re.search(r'(\S)\1{3,}', comment_rest):
+            violations.append(idx + 1)
             changed = True
             continue  # Remove the entire cluttered comment line
         new_lines.append(line)
     new_source = ''.join(new_lines)
-    if not changed:
-        return False
-    if show:
-        print(new_source.rstrip())
-    if not dry_run:
-        with open(file_path, 'w', encoding='utf-8', newline='') as f:
-            f.write(new_source)
-    return True
+    if changed:
+        if show:
+            print(new_source.rstrip())
+        if not dry_run:
+            with open(file_path, 'w', encoding='utf-8', newline='') as f:
+                f.write(new_source)
+        return violations
+    return []
 
 
 def process_file(args, filepath, effective_rules, und_codes_all,
                  blk_codes_all, cmt_rules_active):
+    """Run all active rules on a file and report violations to stdout."""
     und_active = effective_rules & set(und_codes_all)
     blk_active = effective_rules & set(blk_codes_all)
     cmt_active = effective_rules & cmt_rules_active
     changed = False
+    violations_reported: list[tuple[int, str]] = []
     if und_active:
-        if strip_underscores(Path(filepath), und_active,
-                             not args.fix, args.show):
-            print(f'AR001-003 – stripped leading underscores '
-                  f'from {filepath}')
-            changed = True
+        for lineno, rule_code in strip_underscores(
+            Path(filepath), und_active, not args.fix, args.show,
+        ):
+            violations_reported.append(
+                (lineno, f'{rule_code} ({get_rule_group(rule_code)})'),
+            )
     if blk_active:
-        if fix_blanks(Path(filepath), blk_active,
-                      args.blank_lines_gap, not args.fix, args.show):
-            rule_list = ','.join(sorted(blk_active))
-            print(f'{rule_list} – stripped excessive blanks '
-                  f'from {filepath}')
-            changed = True
+        for lineno, rule_code in fix_blanks(
+            Path(filepath), blk_active,
+            args.blank_lines_gap, not args.fix, args.show,
+        ):
+            violations_reported.append(
+                (lineno, f'{rule_code} ({get_rule_group(rule_code)})'),
+            )
     if cmt_active:
-        if strip_repeated_comments(Path(filepath), effective_rules, not args.fix,
-                                   args.show):
-            rule_list = ','.join(sorted(cmt_active))
-            print(f'{rule_list} – stripped cluttered comments '
-                  f'from {filepath}')
-            changed = True
+        for ln in strip_repeated_comments(
+            Path(filepath), effective_rules, not args.fix, args.show,
+        ):
+            violations_reported.append((ln, 'AR021 (comments)'))
+    # Print all violations in standard pre-commit format
+    if violations_reported:
+        changed = True
+        lines_seen = set()
+        for lineno, desc in sorted(violations_reported):
+            if lineno not in lines_seen:
+                print(f'{filepath}:{lineno}: {desc}')
+                lines_seen.add(lineno)
     return changed
 
 
@@ -359,11 +394,8 @@ def run():
             if t:
                 cli_raw.update(expand_codes(t))
     if not cli_raw and (args.und_s or args.blank_s):
-        und_codes = expand_shorthand('underscores') or ('AR001', 'AR002',
-                                                        'AR003')
-        blk_codes = expand_shorthand('blanks') or ('AR011', 'AR012',
-                                                   'AR013', 'AR014',
-                                                   'AR015')
+        und_codes = set(expand_shorthand('underscores'))
+        blk_codes = set(expand_shorthand('blanks'))
         if args.und_s:
             cli_raw.update(und_codes)
         if args.blank_s:
@@ -381,11 +413,8 @@ def run():
     if not effective_rules:
         return
     changed = False
-    und_codes_all = expand_shorthand('underscores') or ('AR001', 'AR002',
-                                                        'AR003')
-    blk_codes_all = expand_shorthand('blanks') or ('AR011', 'AR012',
-                                                   'AR013', 'AR014',
-                                                   'AR015')
+    und_codes_all = set(expand_shorthand('underscores'))
+    blk_codes_all = set(expand_shorthand('blanks'))
     cmt_rules_active = {'AR021'}
 
     for filepath in args.files:

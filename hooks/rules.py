@@ -193,3 +193,8 @@ def validate_rules(rules: Iterable[str]) -> set[str]:  # noqa: F821
     for code in rules:
         validated.update(expand_codes(code))
     return validated
+
+
+def get_rule_group(code: str) -> str:
+    """Return the group name for a rule code from RULE_CATALOG."""
+    return RULE_CATALOG.get(code, {}).get('group', 'custom')
