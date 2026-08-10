@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # /// script
 # name = "agent_reformat"
-# requires-python = ">=3.9"
+# requires-python = ">=3.11"
 # dependencies = []
 # ///
 from __future__ import annotations
@@ -270,7 +270,6 @@ def fix_blanks(filepath, rules, min_gap=3, dry_run=False, show=False):  # noqa
                     violations.extend((curr_lineno - consecutive_blanks + i, 'AR011')
                                       for i in range(consecutive_blanks))
                 elif should_keep:
-                    # Record AR012 violation for blank lines kept due to gap rule
                     if gap_reached and same_indent and 'AR012' in active_rules:
                         violations.extend((curr_lineno - consecutive_blanks + i, 'AR012')
                                           for i in range(consecutive_blanks))
@@ -309,7 +308,6 @@ def fix_blanks(filepath, rules, min_gap=3, dry_run=False, show=False):  # noqa
                 f.write(new_source)
         return violations
     if changed:
-        # Changes made but no specific blank violations (e.g. indentation changes)
         if show:
             print(new_source.rstrip())
         if not dry_run:
@@ -434,7 +432,8 @@ def strip_repeated_comments(filepath, rules=frozenset(), dry_run=False, show=Fal
         return []
     violations = []  # line numbers (1-based)
     seen_lines = set()
-    # Iterate the global token stream: we ONLY care if a line's first meaningful token is a COMMENT.
+    # Iterate the global token stream: we only care if a line's first
+    # meaningful token is a COMMENT.
     for tok in tokens:
         if tok.type == tokenize.COMMENT:
             lineno = tok.start[0]
@@ -449,7 +448,7 @@ def strip_repeated_comments(filepath, rules=frozenset(), dry_run=False, show=Fal
             # Extract the comment content based on token position
             start_col = tok.start[1] + 1  # +1 for the '#' itself
             comment_part = line_text[start_col - 1:]
-            # Check for repetition of ANY non-whitespace character (letters, digits, or symbols)
+            # Check for repetition of ANY non-whitespace character
             if re.search(r'(\S)\1{3,}', comment_part):
                 violations.append(lineno)
                 seen_lines.add(lineno)
@@ -569,7 +568,7 @@ def run():
         if resolved_cfg or tox_cfg:
             cli_raw = (resolved_cfg | tox_cfg)
     effective_rules = validate_rules(cli_raw)
-    # If no rules are specified anywhere (CLI or config), enable ALL rules by default.
+    # If no rules are specified anywhere, enable ALL rules by default.
     if not effective_rules:
         effective_rules = validate_rules(expand_codes('AR'))
     changed = False
@@ -577,8 +576,8 @@ def run():
     blk_codes_all = set(expand_shorthand('blanks'))
     emj_codes_all = set(expand_shorthand('emojis'))
     cmt_rules_active = {'AR021'}
-    cfg_path = '.'  # CWD for options config (not script dir).
-    # Resolve config options from pyproject.toml / tox.ini when CLI default used.
+    cfg_path = '.'
+    # Resolve config options from pyproject.toml / tox.ini
     gap = read_max_gap(args.blank_lines_gap, cfg_path)
     comment_len = read_comment_max(args.comment_lines_max, cfg_path)
 

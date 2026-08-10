@@ -202,7 +202,7 @@ def rules_from_pyproject(path: str | Path) -> set[str] | None:
     section = (cfg.get('tool', {}) or {}).get('agent-reformat')
     if not isinstance(section, dict):
         return None
-    # Also resolve max-gap and comment-line-length from same config for convenience.
+    # Also resolve max-gap and comment-line-length from same config
     found = find_rules_from_section(section.get('rules'))
     for key in GROUPS:
         val = section.get(key)

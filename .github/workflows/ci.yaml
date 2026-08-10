@@ -2,107 +2,51 @@
 name: CI
 on:
   push:
-    branches: [main, master]
+    branches: ['**']
   pull_request:
-    branches: [main, master]
-  schedule:
-    - cron: 0 0 * * 1
-  workflow_dispatch:
-env:
-  PYTHON_MIN_VER: '3.10'
-  PYTHON_MAX_VER: '3.14'
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
-  validate-precommit-config:
-    name: Validate .pre-commit-hooks.yaml
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.13'
-      - name: Install pre-commit
-        run: pip install pre-commit
-      - name: Validate hook definitions
-        # This ensures the YAML parses correctly and all referenced files exist
-        run: |
-          pre-hooks=$(yq e '.[].id' .pre-commit-hooks.yaml)
-          for hook in $pre-hooks; do
-            entry=$(yq ".[] | select(. id == \"$hook\") | .entry" .pre-commit-hooks.yaml)
-            echo "Checking hook: $hook (entry: $entry)"
-            # Verify all referenced paths exist
-            if [[ "$entry" == hooks/* ]]; then
-              script_path=$(echo "$entry" | awk '{print $1}')
-              if [ ! -f "$script_path" ]; then
-                echo "::error::Referenced hook file '$script_path' not found!"
-                exit 1
-              fi
-            fi
-          done
-          # Also try parsing it with pre-commit directly
-          pre-commit sample-config > /dev/null && \
-            echo "YAML is valid YAML" || \
-            exit 1
-  test-hooks:
-    name: Test hooks on Python ${{ matrix.python-version }}
-    needs: validate-precommit-config
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ['3.10', '3.11', '3.12', '3.13', '3.14']
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-      - name: Install package in isolated environment
-        run: pip install . --quiet
-      - name: Create test Python file
-        run: |
-          cat > /tmp/test_script.py << 'EOF'
-          #!/usr/bin/env python3
-          class _TestClass:  # Should have leading underscore removed
-              def __init__(self, _value):  # Same here
-                  self._value = _value
-              def _get_value(self) -> int:  # And here
-                  return self._value
-          EOF
-      - name: Run trim-underscores hook
-        run: |
-          python hooks/trim_underscores.py \
-            --remove-underscores \
-            --remove-blank-lines \
-            /tmp/test_script.py
-      - name: Verify underscores were removed
-        run: |
-          # The class name should no longer start with underscore
-          if grep -q "^[[:space:]]*class _TestClass:" /tmp/test_script.py; then
-            echo "::error::_TestClass still has leading underscore!"
-            exit 1
-          fi
-      - name: Verify blank lines were cleaned up
-        run: |
-          # Original file had double blanks between __init__ and method body
-          # After running the hook, consecutive blank lines should be reduced
-          echo "Hook ran successfully"
-  build-and-test-pyproject:
-    name: Build package (source distribution)
+  pre-commit:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.13'
-      - name: Install build tools
-        run: pip install build twine check-wheel-content
-      - name: Check if pyproject.toml exists and build
+          python-version: '3.11'
+      - name: Cache pre-commit environments
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml')
+            }}
+      - name: Install pre-commit
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pre-commit
+      - name: Run pre-commit
+        run: pre-commit run --all-files --show-diff-on-failure
+  agent-reformat:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ['3.11', '3.14']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install .
+      - name: Run agent-reformat on all tracked Python files
+        shell: bash
         run: |-
-          echo "Building with pyproject.toml..."
-          python -m build
-          # If wheel is created, verify content
-          if ls dist/*.whl 1> /dev/null 2>&1; then
-            echo "Verifying wheel contents..."
-            check-wheel-content dist/*.whl || true
-          fi
+          mapfile -t files < <(git ls-files '*.py')
+          agent-reformat "${files[@]}"
