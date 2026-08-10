@@ -2,6 +2,8 @@
 __pycache__/
 *.py[cod]
 *$py.class
+.pytest_cache/
+.tox/
 
 # Virtual environments
 venv/
@@ -18,5 +20,3 @@ venv/
 .DS_Store
 Thumbs.db
 *.egg-info/
-
-
