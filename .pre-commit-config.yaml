@@ -98,6 +98,11 @@ repos:
       - id: yamlfix
         args: [-c, pyproject.toml]
         exclude: model_card.yaml
+  - repo: https://github.com/zizmorcore/zizmor-pre-commit
+    rev: v1.29.0
+    hooks:
+      - id: zizmor
+        args: [--no-progress, --fix, --min-severity=low]
   - repo: https://github.com/manthey/manthey-precommit-hooks
     rev: v1.0.8
     hooks:
