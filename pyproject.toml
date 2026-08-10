@@ -20,5 +20,8 @@ agent-reformat = "hooks.agent_reformat:run"
 where = ["."]
 include = ["hooks*"]
 
+[tool.yamlfix]
+line_ending = "lf"
+
 [tool.agent-reformat]
 rules = ["AR"]
