@@ -1,4 +1,4 @@
-# manthey-precommit-hooks
+# agent-reformat
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -49,7 +49,7 @@ agent-reformat --rules AR001,AR012 path/to/files.py
 ```yaml
 # .pre-commit-config.yaml
 repos:
-  - repo: https://github.com/manthey/manthey-precommit-hooks
+  - repo: https://github.com/manthey/agent-reformat
     rev: v1.0.0
     hooks:
       - id: agent-reformat

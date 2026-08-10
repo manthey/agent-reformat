@@ -1,4 +1,3 @@
-"""Rule codes for manthey-precommit-hooks."""
 from __future__ import annotations
 
 import configparser

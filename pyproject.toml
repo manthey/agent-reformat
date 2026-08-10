@@ -3,8 +3,8 @@ requires = ["setuptools>=61", "setuptools-scm[toml]>=8.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "manthey-precommit-hooks"
-description = "Clean, zero-overhead pre-commit hooks for AI-generated code."
+name = "agent-reformat"
+description = "Reformat pyython pre-commit hooks for AI-generated code."
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.11"
