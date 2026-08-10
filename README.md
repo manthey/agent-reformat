@@ -30,9 +30,7 @@ The hook exposes individual rule codes for granular control. You can activate sp
 | `AR015` | Blank lines  | Normalize trailing blank lines at end of file (PEP-8 E305/E306).           |
 | `AR016` | Blank lines  | Remove blank lines surrounding comments.                                    |
 | `AR021` | Comments     | Remove comment-only lines repeating 4+ identical non-whitespace chars.      |
-| `AR022` | Comments     | Enforce max line length on **comment-only** lines (error only, no auto-fix).
-### Note for **AR022**: Lines exceeding the configured maximum must be manually rewrapped
-by users or agents into shorter multi-line comments or shortened entirely.          |
+| `AR022` | Comments     | Enforce max line length on **comment-only** lines (error only, no auto-fix). Lines exceeding the configured maximum must be manually rewrapped by users or agents into shorter multi-line comments or shortened entirely.          |
 | `AR031` | Emojis       | Remove emoji characters.                                                    |
 | `AR032` | Emojis       | Replace decorative text with plain versions.                                |
 
@@ -40,21 +38,14 @@ by users or agents into shorter multi-line comments or shortened entirely.      
 
 If no rules are specified via CLI arguments or configuration files (`pyproject.toml`, `tox.ini`), _all_ available rules are enabled by default. This behavior is equivalent to passing `--rules=AR`, which expands all rule codes (AR*) for maximum cleanup coverage against LLM-generated code artifacts.
 
-### Shorthands
-
-The existing shorthands are expanded to their constituent rules:
-
-- `--underscores` → `AR001,AR002,AR003`
-- `--blanks` → `AR011,AR012,AR013,AR014,AR015,AR016`
-
 ### Activation Methods
 
-**CLI (highest priority)**:
+**CLI**:
 ```bash
 agent-reformat --rules AR001,AR012 path/to/files.py
 ```
 
-Or in `.pre-commit-config.yaml`:
+**`.pre-commit-config.yaml`**:
 ```yaml
 # .pre-commit-config.yaml
 repos:
@@ -65,27 +56,19 @@ repos:
         args: [ --rules, AR001,AR011 ]
 ```
 
-**Shorthands**: `--underscores` and `--blanks` flags (expanded per the table above).
+### Configuration
 
-**pyproject.toml** (fallback when no CLI flags are given):
+In `pyproject.toml`:
 ```toml
 [tool.agent-reformat]
 rules = ["AR011", "AR012"]  # list of rule codes
-
-# or use booleans for full group activation:
-underscores = true
-blanks = true
-emojis = true
-
-# or use shorthand names as strings:
-rules = ["blanks"]
 
 # Configuration options (also via tox.ini):
 blank_lines_gap = 3         # min gap between blank lines (AR012)
 comment_lines_max = 79      # max length for comment-only lines (AR022)
 ```
 
-**tox.ini** (legacy fallback, only used when pyproject.toml doesn't provide anything):
+In `tox.ini`:
 ```ini
 [agent-reformat]
 ; Comma-separated rule codes only (shorthands not supported)

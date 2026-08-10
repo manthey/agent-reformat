@@ -104,7 +104,7 @@ repos:
       - id: zizmor
         args: [--no-progress, --fix, --min-severity=low]
   - repo: https://github.com/manthey/manthey-precommit-hooks
-    rev: v1.0.8
+    rev: v1.0.9
     hooks:
       - id: agent-reformat
         args: [--fix]
