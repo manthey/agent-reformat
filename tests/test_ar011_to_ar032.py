@@ -1,7 +1,7 @@
 """Tests for AR011-AR018 (blank-line rules)."""
 from __future__ import annotations
 
-import subprocess
+import io
 import sys
 from pathlib import Path
 
@@ -13,13 +13,24 @@ def run(tmp_path: Path, src: str, fixed: bool = True) -> tuple[str, int]:
     f = tmp_path / 'sample.py'
     f.write_text(src)
 
-    cmd = [sys.executable, '-m', 'hooks.agent_reformat'] if not fixed else \
-        [sys.executable, '-m', 'hooks.agent_reformat', str(f), '--fix']
-    result = subprocess.run(
-        [*cmd[0:-1], *[cmd[-1]]] if len(cmd) == 2 else cmd,
-        capture_output=True, text=True, cwd=PACKAGE_ROOT,
-    )
-    return result.stdout + f.read_text() if fixed else result.stdout, result.returncode
+    from hooks.agent_reformat import run as run_hook
+
+    original_stdout = sys.stdout
+    captured = io.StringIO()
+    try:
+        sys.stdout = captured
+        try:
+            cmd_args = [str(f), '--fix'] if fixed else [str(f)]
+            run_hook(cmd_args)
+        except SystemExit as e:
+            rc = e.code if e.code is not None else 0
+    finally:
+        sys.stdout = original_stdout
+    out_text = captured.getvalue()
+
+    if fixed:
+        return out_text + f.read_text(), rc
+    return out_text, rc
 
 
 def _check(tmp_path: Path, src: str) -> tuple[str, int]:
@@ -27,11 +38,19 @@ def _check(tmp_path: Path, src: str) -> tuple[str, int]:
     f = tmp_path / 'sample.py'
     f.write_text(src)
 
-    result = subprocess.run(
-        [sys.executable, '-m', 'hooks.agent_reformat', str(f)],
-        capture_output=True, text=True, cwd=PACKAGE_ROOT,
-    )
-    return result.stdout, result.returncode
+    from hooks.agent_reformat import run as run_hook
+
+    original_stdout = sys.stdout
+    captured = io.StringIO()
+    try:
+        sys.stdout = captured
+        try:
+            run_hook([str(f)])
+        except SystemExit as e:
+            rc = e.code if e.code is not None else 0
+    finally:
+        sys.stdout = original_stdout
+    return captured.getvalue(), rc
 
 
 # === AR011: Collapse multiple blanks before def/class/@ ===

@@ -1,7 +1,7 @@
 """Tests for AR001: Strip single leading underscores from module-level variables."""
 from __future__ import annotations
 
-import subprocess
+import io
 import sys
 from pathlib import Path
 
@@ -16,13 +16,19 @@ def invoke_agent_reformat(tmp_path: Path, source_code: str) -> tuple[str, str, i
     test_file = tmp_path / 'sample.py'
     test_file.write_text(source_code)
 
-    result = subprocess.run(
-        [sys.executable, '-m', 'hooks.agent_reformat', str(test_file), '--fix'],
-        capture_output=True,
-        text=True,
-        cwd=PACKAGE_ROOT,
-    )
-    return source_code, test_file.read_text(), result.returncode
+    from hooks.agent_reformat import run
+
+    original_stdout = sys.stdout
+    captured = io.StringIO()
+    try:
+        sys.stdout = captured
+        try:
+            run([str(test_file), '--fix'])
+        except SystemExit as e:
+            rc = e.code if e.code is not None else 0
+    finally:
+        sys.stdout = original_stdout
+    return source_code, test_file.read_text(), rc
 
 
 def invoke_agent_reformat_check(
@@ -35,13 +41,19 @@ def invoke_agent_reformat_check(
     test_file = tmp_path / 'sample.py'
     test_file.write_text(source_code)
 
-    result = subprocess.run(
-        [sys.executable, '-m', 'hooks.agent_reformat', str(test_file)],
-        capture_output=True,
-        text=True,
-        cwd=PACKAGE_ROOT,
-    )
-    return result.stdout, result.returncode
+    from hooks.agent_reformat import run
+
+    original_stdout = sys.stdout
+    captured = io.StringIO()
+    try:
+        sys.stdout = captured
+        try:
+            run([str(test_file)])
+        except SystemExit as e:
+            rc = e.code if e.code is not None else 0
+    finally:
+        sys.stdout = original_stdout
+    return captured.getvalue(), rc
 
 
 class TestAR001FixMode:

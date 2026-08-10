@@ -521,7 +521,7 @@ def process_file(args, filepath, effective_rules, und_codes_all,
     return changed
 
 
-def run():
+def run(cli_args=None):
     """CLI entry point."""
     parser = argparse.ArgumentParser(
         description='Reformat excessive artifacts from generated Python code.',
@@ -541,7 +541,7 @@ def run():
     parser.add_argument('--rules', type=str, default='',
                         help='Comma-separated rule codes (e.g. AR001,AR012). '
                              'Pass "AR" to enable all rules. Overrides shorthands.')
-    args = parser.parse_args()
+    args = parser.parse_args(cli_args)
 
     cli_raw = set()
     if args.rules:

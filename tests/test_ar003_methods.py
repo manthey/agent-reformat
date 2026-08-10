@@ -1,7 +1,7 @@
 """Tests for AR003: Strip single leading underscores from class methods."""
 from __future__ import annotations
 
-import subprocess
+import io
 import sys
 from pathlib import Path
 
@@ -14,11 +14,19 @@ def run_fix(tmp_path: Path, source_code: str) -> tuple[str, str, int]:
     f = tmp_path / 'sample.py'
     f.write_text(source_code)
 
-    result = subprocess.run(
-        [sys.executable, '-m', 'hooks.agent_reformat', str(f), '--fix'],
-        capture_output=True, text=True, cwd=PACKAGE_ROOT,
-    )
-    return source_code, f.read_text(), result.returncode
+    from hooks.agent_reformat import run
+
+    original_stdout = sys.stdout
+    captured = io.StringIO()
+    try:
+        sys.stdout = captured
+        try:
+            run([str(f), '--fix'])
+        except SystemExit as e:
+            rc = e.code if e.code is not None else 0
+    finally:
+        sys.stdout = original_stdout
+    return source_code, f.read_text(), rc
 
 
 def run_check(tmp_path: Path, src: str) -> tuple[str, int]:
@@ -26,11 +34,19 @@ def run_check(tmp_path: Path, src: str) -> tuple[str, int]:
     f = tmp_path / 'sample.py'
     f.write_text(src)
 
-    r = subprocess.run(
-        [sys.executable, '-m', 'hooks.agent_reformat', str(f)],
-        capture_output=True, text=True, cwd=PACKAGE_ROOT,
-    )
-    return r.stdout, r.returncode
+    from hooks.agent_reformat import run
+
+    original_stdout = sys.stdout
+    captured = io.StringIO()
+    try:
+        sys.stdout = captured
+        try:
+            run([str(f)])
+        except SystemExit as e:
+            rc = e.code if e.code is not None else 0
+    finally:
+        sys.stdout = original_stdout
+    return captured.getvalue(), rc
 
 
 # === Fix Mode ===
