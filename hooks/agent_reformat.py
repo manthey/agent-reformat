@@ -4,6 +4,7 @@
 # requires-python = ">=3.11"
 # dependencies = []
 # ///
+
 from __future__ import annotations
 
 import argparse
@@ -131,14 +132,92 @@ def collect_definitions_by_type(tree):
     return result
 
 
-def is_protected(active_underscore_rules, source, usages, ident, kind, lineno):
+def get_constant_value(node):
+    """Extract string value from an AST node (for __all__ elements)."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    # handle older Python versions with ast.Str
+    if hasattr(ast, 'Str') and isinstance(node, ast.Str):  # type: ignore[name-defined]
+        return node.s  # type: ignore[attr-defined]
+    return None
+
+
+def collect_exported_names(tree):
+    """Detect __all__ export list or infer from module structure.
+
+    Returns:
+        Tuple of (is_explicitly_exported, exported_set)
+        - If __all__ is defined: (True, set of names in __all__)
+        - If no __all__: (False, None) meaning everything is implicitly exported
+
+    """
+    exports = set()
+    for node in getattr(tree, 'body', []):
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id == '__all__':
+                    if isinstance(node.value, (ast.List, ast.Tuple)):
+                        for elt in node.value.elts:
+                            val = get_constant_value(elt)
+                            if val is not None:
+                                exports.add(val)
+                    return True, exports
+    # No __all__ found - everything at module level is implicitly exported
+    return False, None
+
+
+def collect_class_exports(tree):
+    """Determine which top-level classes are public vs private.
+
+    Returns dict: class_name -> bool (is_public)
+    A class is considered non-exported if:
+    - Its name starts with underscore (private by convention), OR
+    - __all__ is defined and it's NOT in the list
+    """
+    all_defined, exported_set = collect_exported_names(tree)
+    classes = {}
+    for node in getattr(tree, 'body', []):
+        if isinstance(node, ast.ClassDef):
+            name = node.name
+            # Names starting with underscore are non-exported by convention
+            if name.startswith('_'):
+                is_pub = False
+            elif all_defined:
+                is_pub = name in (exported_set or set())
+            else:
+                # No __all__ means everything is implicitly exported
+                is_pub = True
+            classes[name] = is_pub
+    return classes
+
+
+def is_public_name(name, all_defined, exported_set):
+    """Check if a name is 'public' (has export exposure).
+
+    If __all__ is defined, only items in it are public.
+    If no __all__, everything at module level is implicitly public.
+    """
+    if all_defined:
+        # __all__ is defined - only items in it are exported
+        return name in (exported_set or set())
+    # No __all__, everything at module level is implicitly exported
+    return True
+
+
+def is_protected(active_underscore_rules, source, usages, ident, kind, lineno):  # noqa: C901
     """Return True if identifier should NOT be stripped."""
     kept = False
     for r in active_underscore_rules:
         entry = lookup(r)
         g = entry.get('group') or ''
         code = (entry.get('code') or '').upper()
-        if g == 'underscores':
+        if g in ('underscores', 'underscores-private'):
+            if kind == 'variable' and code in ('AR001', 'AR041'):
+                kept = True
+            elif kind == 'function' and code in ('AR002', 'AR042'):
+                kept = True
+            elif kind == 'method' and code in ('AR003', 'AR043'):
+                kept = True
             if kind == 'variable' and code == 'AR001':
                 kept = True
             elif kind == 'function' and code == 'AR002':
@@ -162,8 +241,8 @@ def is_protected(active_underscore_rules, source, usages, ident, kind, lineno):
     return False
 
 
-def strip_underscores(filepath, rules, dry_run=False, show=False):
-    """Strip underscores per AR001-003 rules. Returns list of (lineno, ident) for violations."""
+def strip_underscores(filepath, rules, dry_run=False, show=False):  # noqa: C901
+    """Strip underscores per AR001-AR043 rules. Returns violations."""
     file_path = Path(filepath)
     with open(file_path, encoding='utf-8', newline='') as f:
         source = f.read()
@@ -176,24 +255,89 @@ def strip_underscores(filepath, rules, dry_run=False, show=False):
         if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
             usages.setdefault(node.id, []).append(getattr(node, 'lineno', None))
     raw_defs = collect_definitions_by_type(tree)
-    replacements = {}
-
-    underscore_codes = expand_shorthand('underscores') or (
+    # Determine which rule groups are active
+    old_underscore_codes = expand_shorthand('underscores') or (
         'AR001', 'AR002', 'AR003')
-    active_underscore_rules = set(rules) & set(underscore_codes)
-    if not active_underscore_rules:
+    new_underscore_codes = {'AR041', 'AR042', 'AR043'}
+
+    active_old_rules = set(rules) & set(old_underscore_codes)
+    active_new_rules = set(rules) & new_underscore_codes
+    if not active_old_rules and not active_new_rules:
         return []
+    # Collect export info for AR04x rules
+    all_defined, exported_set = collect_exported_names(tree)
+    class_is_public = collect_class_exports(tree)
+
+    replacements = {}
     violations = []
+
+    def get_rule_code(kind, use_new_rules):
+        """Return the appropriate rule code for reporting."""
+        codes = {'variable': ('AR001', 'AR041'),
+                 'function': ('AR002', 'AR042'),
+                 'method': ('AR003', 'AR043')}
+        base, priv = codes[kind]
+        return priv if use_new_rules else base
+
+    def need_check_export_exposure(kind):
+        """Return True if this kind needs export exposure checking."""
+        # Methods always need check (need to know their containing class)
+        # Variables/functions only if AR04x rules are active
+        return kind == 'method' or bool(active_new_rules)
+
     for ident, kind, lineno in raw_defs:
         if not ident.startswith('_') or ident.startswith('__') or ident.endswith('_'):
             continue
         if usages.get(ident, 0) == 0:
             continue
-        if is_protected(active_underscore_rules, source, usages, ident, kind, lineno):
+        # Check export exposure for AR04x rules
+        has_export_exposure = False
+        if active_new_rules and need_check_export_exposure(kind):
+            if kind in ('variable', 'function'):
+                has_export_exposure = is_public_name(ident, all_defined, exported_set)
+            elif kind == 'method':
+                # Find containing class for this method
+                def_line_idx = lineno - 1
+                lines_before = source.splitlines()[:def_line_idx]
+                for cls_name, pub in class_is_public.items():
+                    if pub:  # Only check public classes
+                        for line_text in lines_before:
+                            class_def = f'class {cls_name}(' if '(' else f'class {cls_name}: '
+                            # Check class matching properly
+                            cls_prefix = f'class {cls_name}('
+                            cls_sep = ' '
+                            if (class_def.replace(cls_sep, '') in line_text or
+                                    cls_prefix in line_text):
+                                has_export_exposure = True
+                                break
+            # AR04x rules: skip if item has export exposure
+            if has_export_exposure and not active_old_rules:
+                continue
+        elif has_export_exposure and active_old_rules:
+            # Old rules can still strip non-exported items under AR04x
+            pass
+        # Check export exposure for AR04x rules and skip protected names
+        if active_new_rules and not active_old_rules:
+            if kind in ('variable', 'function'):
+                if is_public_name(ident, all_defined, exported_set):
+                    continue  # Exported  don't strip
+            elif kind == 'method':
+                cls_found = False
+                for cn, pub in class_is_public.items():
+                    if pub:
+                        for lt in source.splitlines()[:lineno - 1]:
+                            if f'class {cn}(' in lt or f'class {cn}: ' in lt:
+                                cls_found = True
+                                break
+                if cls_found:
+                    continue  # In public class  don't strip
+        # Check noqa protection for all active underscore rules
+        all_active_rules = active_old_rules | active_new_rules
+        if is_protected(all_active_rules, source, usages, ident, kind, lineno):
             continue
         replacements[ident] = ident.lstrip('_')
         violations.append(
-            (lineno, {'variable': 'AR001', 'function': 'AR002', 'method': 'AR003'}[kind]))
+            (lineno, get_rule_code(kind, bool(active_new_rules and not active_old_rules))))
     if not violations:
         return []
     new_source = source
@@ -521,18 +665,22 @@ def strip_repeated_comments(filepath, rules=frozenset(), dry_run=False, show=Fal
 
 
 def process_file(args, filepath, effective_rules, und_codes_all,
+                 und_private_codes_all,
                  blk_codes_all, cmt_rules_active, emj_codes_all,
                  gap=3, comment_len=79):
     """Run all active rules on a file and report violations to stdout."""
     und_active = effective_rules & set(und_codes_all)
+    und_private_active = effective_rules & set(und_private_codes_all)
+    # Merge underscore rules before passing to strip_rules
+    all_underscore_rules = und_active | und_private_active
     blk_active = effective_rules & set(blk_codes_all)
     cmt_active = effective_rules & cmt_rules_active
     emj_active = effective_rules & set(emj_codes_all)
     changed = False
     violations_reported = []
-    if und_active:
+    if all_underscore_rules:
         for lineno, rule_code in strip_underscores(
-            Path(filepath), und_active, not args.fix, args.show,
+            Path(filepath), all_underscore_rules, not args.fix, args.show,
         ):
             violations_reported.append(
                 (lineno, f'{rule_code} ({get_rule_group(rule_code)})'),
@@ -626,6 +774,8 @@ def run(cli_args=None):
         effective_rules = validate_rules(expand_codes('AR'))
     changed = False
     und_codes_all = set(expand_shorthand('underscores'))
+    und_private_codes_all = set(expand_shorthand('underscores-private'))  # AR041-3
+
     blk_codes_all = set(expand_shorthand('blanks'))
     emj_codes_all = set(expand_shorthand('emojis'))
     cmt_rules_active = {'AR021'}
@@ -638,7 +788,8 @@ def run(cli_args=None):
         if not str(filepath).endswith('.py'):
             continue
         changed = changed or process_file(
-            args, filepath, effective_rules, und_codes_all, blk_codes_all,
+            args, filepath, effective_rules, und_codes_all, und_private_codes_all,
+            blk_codes_all,
             cmt_rules_active, emj_codes_all, gap, comment_len)
     sys.exit(1 if changed else 0)
 

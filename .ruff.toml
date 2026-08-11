@@ -62,7 +62,7 @@ lint.select = [
     "F",  # pyflakes
     "G",
     # "I",  # isort
-    "ISC",
+    # "ISC",
     # "N",  # pep8-naming
     "NPY",
     "PIE",

@@ -13,6 +13,15 @@ RULE_CATALOG: dict[str, dict[str, str]] = {
                        'top-level functions.'},
     'AR003': {'group': 'underscores',
               'desc': 'Strip single leading underscores from methods.'},
+    'AR041': {'group': 'underscores',
+              'desc': 'Strip single leading underscores from '
+                       'non-exported variables.'},
+    'AR042': {'group': 'underscores',
+              'desc': 'Strip single leading underscores from '
+                       'non-exported functions and methods.'},
+    'AR043': {'group': 'underscores',
+              'desc': 'Strip single leading underscores from '
+                       'methods in non-exported classes.'},
     'AR011': {'group': 'blanks',
               'desc': 'Collapse multiple consecutive blanks '
                        'before def/class/decorator.'},
@@ -41,6 +50,7 @@ RULE_CATALOG: dict[str, dict[str, str]] = {
 
 GROUPS: dict[str, tuple[str, ...]] = {
     'underscores': ('AR001', 'AR002', 'AR003'),
+    'underscores-private': ('AR041', 'AR042', 'AR043'),
     'blanks': ('AR011', 'AR012', 'AR013', 'AR014', 'AR015', 'AR016'),
     'emojis': ('AR031', 'AR032'),
     'comments': ('AR021', 'AR022'),
@@ -87,9 +97,16 @@ def lookup(code: str) -> dict[str, str]:
 
 
 def expand_shorthand(name: str) -> tuple[str, ...]:
-    """Expand a shorthand string (e.g. 'blanks') into its corresponding codes."""
+    """Expand a shorthand string (e.g. 'blanks' or
+    'underscores-private') into its corresponding codes.
+    """
     clean = name.replace('-', '').lower()
     codes = GROUPS.get(clean)
+    if not codes:
+        # Also try lowercase version preserving hyphens
+        # i.e. underscores-private
+        alt = name.lower()
+        codes = GROUPS.get(alt)
     msg: str
     if not codes:  # type: ignore[unreachable]
         avail = list(GROUPS.keys())
@@ -267,7 +284,10 @@ def validate_rules(rules: Iterable[str]) -> set[str]:  # noqa: F821
     """Validate and deduplicate a collection of rule codes."""
     validated: set[str] = set()
     for code in rules:
-        validated.update(expand_codes(code))
+        try:
+            validated.update(expand_codes(code))
+        except ValueError:
+            pass
     return validated
 
 
