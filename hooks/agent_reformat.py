@@ -52,6 +52,25 @@ BMP_PATTERNS = [
 bmp_re = re.compile('|'.join(f'[{p}]' for p in BMP_PATTERNS))
 
 
+def find_pep723_block(source: str) -> tuple[int, int]:
+    """Return (start_lineno, end_lineno) of PEP 723 block or (-1, -1) if not found.
+
+    Returns 1-based line numbers.
+    """
+    lines = source.splitlines()
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped == '# /// script':
+            end_lineno = -1
+            for j in range(i + 1, len(lines)):
+                j1 = j + 1  # 1-based
+                if lines[j].strip() == '# ///':
+                    end_lineno = j1
+                    break
+            return (i + 1, end_lineno)
+    return (-1, -1)
+
+
 def has_noqa(line, rules=frozenset()):
     """Return True if line has a proper # noqa directive for any of rules.
 
@@ -196,6 +215,7 @@ def fix_blanks(filepath, rules, min_gap=3, dry_run=False, show=False):  # noqa
     with open(filepath, encoding='utf-8', newline='') as f:
         source = f.read()
     line_end = '\r\n' if '\r\n' in source else '\n'
+    pep723 = find_pep723_block(source)
     lines = source.splitlines(keepends=True)
     output = []
     violations = []  # (lineno, rule_code) per blank line to remove
@@ -204,6 +224,7 @@ def fix_blanks(filepath, rules, min_gap=3, dry_run=False, show=False):  # noqa
     consecutive_blanks = 0
     prev_indent = 0
     prev_text = ''
+    prev_lineno = 0
     indent_cause = {0: 'other'}
     gap = min_gap
 
@@ -247,7 +268,17 @@ def fix_blanks(filepath, rules, min_gap=3, dry_run=False, show=False):  # noqa
                 if 'AR016' in active_rules:
                     prev_is_comp = prev_text.lstrip().startswith('#')
                     curr_is_comp = curr_text.lstrip().startswith('#')
-                    comment_gap_override = (prev_is_comp or curr_is_comp)
+                    # Don't apply AR016 for PEP 723 comments
+                    prev_in_pep723 = (
+                        prev_lineno >= pep723[0] and
+                        prev_lineno <= pep723[1]
+                        if pep723[0] > 0
+                        else False
+                    )
+                    comment_gap_override = (
+                        (prev_is_comp or curr_is_comp) and
+                        not prev_in_pep723
+                    )
                 gap_reached = code_lines_since_blank >= gap
                 same_indent = prev_indent == curr_indent
 
@@ -262,6 +293,14 @@ def fix_blanks(filepath, rules, min_gap=3, dry_run=False, show=False):  # noqa
                 elif same_indent and gap_reached and not comment_gap_override:
                     should_keep = True
                 elif curr_has_noqa:
+                    should_keep = True
+                # Preserve one blank line after PEP 723 block closing
+                pep723_right_after = (
+                    pep723[0] > 0 and
+                    prev_lineno >= pep723[0] and
+                    prev_lineno <= pep723[1]
+                )
+                if pep723_right_after:
                     should_keep = True
                 if write_pep8_two:
                     pass
@@ -288,11 +327,20 @@ def fix_blanks(filepath, rules, min_gap=3, dry_run=False, show=False):  # noqa
         output.append(line)
         code_lines_since_blank += 1
         prev_indent = curr_indent
+        prev_lineno = curr_lineno
         prev_text = curr_text
     if pending_blank:
+        pep723_after = (
+            pep723[0] > 0 and
+            prev_lineno >= pep723[0] and
+            prev_lineno <= pep723[1]
+        )
         last_def_class = any(prev_text.strip().endswith(sfx) for sfx in (
             'def ', 'async def ', 'class '))
-        if last_def_class or has_many:
+        if pep723_after:
+            # Preserve one blank line right after PEP 723 block
+            output.append(line_end)
+        elif last_def_class or has_many:
             output.append(line_end + line_end)
         elif active_rules & {'AR015'}:
             violations.extend((idx - consecutive_blanks + i, 'AR015')
@@ -425,6 +473,7 @@ def strip_repeated_comments(filepath, rules=frozenset(), dry_run=False, show=Fal
     file_path = Path(filepath)
     with open(file_path, encoding='utf-8', newline='') as f:
         source = f.read()
+    pep723 = find_pep723_block(source)
     # We parse the entire token stream to strictly distinguish real comments
     try:
         tokens = list(tokenize.generate_tokens(io.StringIO(source).readline))
@@ -450,6 +499,10 @@ def strip_repeated_comments(filepath, rules=frozenset(), dry_run=False, show=Fal
             comment_part = line_text[start_col - 1:]
             # Check for repetition of ANY non-whitespace character
             if re.search(r'(\S)\1{3,}', comment_part):
+                # Skip comments within PEP 723 block
+                if pep723[0] > 0 and pep723[0] <= lineno <= pep723[1]:
+                    seen_lines.add(lineno)
+                    continue
                 violations.append(lineno)
                 seen_lines.add(lineno)
     # Apply removals
