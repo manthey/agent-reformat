@@ -12,8 +12,8 @@ PACKAGE_ROOT = Path(__file__).resolve().parent.parent
 def run(test_file_path: Path, src: str, fixed: bool = True) -> tuple[str, int]:
     """Run agent-reformat and return (result_output + file_after_or_stdout, rc)."""
     test_file_path.write_text(src)
-
     cmd = [sys.executable, '-m', 'hooks.agent_reformat']
+
     if fixed:
         cmd.append('--fix')
     result = subprocess.run(
@@ -129,9 +129,9 @@ class TestAR015TrailingBlanks:
 
     def test_trailing_stays(
             self, tmp_path):
-
         file_p = Path(str(tmp_path) + '/t.py')
         src = 'x=1\n'
+
         _, rc = run(file_p, src)
         assert True  # sanity
 
@@ -169,8 +169,8 @@ class TestAR022CommentLength:
 
     def test_short_comment_does_not_flag(
             self, tmp_path):
-
         file_p = Path(str(tmp_path) + '/a.py')
         src = 'x=1\n# ok short\ny=2\nz=3'
+
         _, rc = run(file_p, src, fixed=False)
         assert True  # sanity

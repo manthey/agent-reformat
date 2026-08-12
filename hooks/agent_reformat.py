@@ -257,7 +257,6 @@ def strip_underscores(filepath, rules, dry_run=False, show=False):  # noqa: C901
     old_underscore_codes = expand_shorthand('underscores') or (
         'AR001', 'AR002', 'AR003')
     new_underscore_codes = {'AR041', 'AR042', 'AR043'}
-
     active_old_rules = set(rules) & set(old_underscore_codes)
     active_new_rules = set(rules) & new_underscore_codes
     if not active_old_rules and not active_new_rules:
@@ -353,7 +352,6 @@ def strip_underscores(filepath, rules, dry_run=False, show=False):  # noqa: C901
 def fix_blanks(filepath, rules, min_gap=3, dry_run=False, show=False):  # noqa
     """Apply AR011-015 to clean up blank lines. Returns violations."""
     active_rules = set(rules) if rules else set()
-
     with open(filepath, encoding='utf-8', newline='') as f:
         source = f.read()
     line_end = '\r\n' if '\r\n' in source else '\n'
@@ -367,6 +365,10 @@ def fix_blanks(filepath, rules, min_gap=3, dry_run=False, show=False):  # noqa
     prev_indent = 0
     prev_text = ''
     prev_lineno = 0
+    # Track whether the previous non-blank line was a decorator.
+    # Consecutive decorators form a single logical unit; blanks between
+    # them must be removed (gap goes above the first @).
+    prev_was_decorator = False
     indent_cause = {0: 'other'}
     gap = min_gap
     # Detect which lines fall inside multi-line strings so we never process
@@ -401,13 +403,18 @@ def fix_blanks(filepath, rules, min_gap=3, dry_run=False, show=False):  # noqa
             has_many = consecutive_blanks >= 2
             write_pep8_two = False
             curr_has_noqa = has_noqa(line, active_rules) and not curr_text.startswith(' ')
-
             if ('AR011' in active_rules and has_many and
                     curr_indent == 0):
                 starts_def = any(
                     curr_text.startswith(pfx) for pfx in (
                         'def ', 'async def ', 'class ', '@'))
-                if starts_def:
+                # Skip AR011 normalization inside a decorator chain.
+                prev_is_dec = prev_text.startswith('@') and not prev_text.strip().startswith(
+                    ('def ', 'async def ', 'class '))
+                in_decorator_chain = prev_is_dec and any(
+                    curr_text.startswith(pfx) for pfx in (
+                        '@', 'def ', 'async def ', 'class '))
+                if starts_def and not in_decorator_chain:
                     output.append(line_end + line_end)
                     write_pep8_two = True
             if not write_pep8_two:
@@ -454,7 +461,15 @@ def fix_blanks(filepath, rules, min_gap=3, dry_run=False, show=False):  # noqa
                 starts_def = any(
                     curr_text.startswith(pfx) for pfx in (
                         'def ', 'async def ', 'class ', '@'))
-                if keep_for_imports or starts_def:
+                # Decorator-chain override: don't keep blanks between
+                # consecutive decorator lines or between the last decorator and
+                # its following def/class — they form one logical unit.
+                in_decorator_chain = prev_was_decorator and any(
+                    curr_text.startswith(pfx) for pfx in (
+                        '@', 'def ', 'async def ', 'class '))
+                if in_decorator_chain:
+                    should_keep = False  # force no blank; will fall through
+                elif keep_for_imports or starts_def:
                     should_keep = True
                 elif keep_for_outdent:
                     should_keep = True
@@ -501,6 +516,9 @@ def fix_blanks(filepath, rules, min_gap=3, dry_run=False, show=False):  # noqa
         prev_indent = curr_indent
         prev_lineno = curr_lineno
         prev_text = curr_text
+        prev_was_decorator = (prev_text.startswith('@') and
+                              not prev_text.strip().startswith(('def ', 'async def ', 'class '))
+                              )
     if pending_blank:
         pep723_after = (
             pep723[0] > 0 and
@@ -680,7 +698,6 @@ def strip_repeated_comments(filepath, rules=frozenset(), dry_run=False, show=Fal
     # Apply removals
     lines = source.split('\n')
     new_source = '\n'.join(line for i, line in enumerate(lines, 1) if i not in violations)
-
     changed = (new_source != source)
     if changed:
         if show:
@@ -803,7 +820,6 @@ def run(cli_args=None):
     changed = False
     und_codes_all = set(expand_shorthand('underscores'))
     und_private_codes_all = set(expand_shorthand('underscores-private'))  # AR041-3
-
     blk_codes_all = set(expand_shorthand('blanks'))
     emj_codes_all = set(expand_shorthand('emojis'))
     cmt_rules_active = {'AR021'}
@@ -820,7 +836,6 @@ def run(cli_args=None):
             blk_codes_all,
             cmt_rules_active, emj_codes_all, gap, comment_len)
     sys.exit(1 if changed else 0)
-
-
 if __name__ == '__main__':
+
     run()

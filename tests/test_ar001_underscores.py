@@ -63,7 +63,6 @@ class TestAR001FixMode:
         """A variable with '# noqa: AR001' on its line must keep the underscore."""
         source = '_x = 1  # noqa: AR001\nprint(_x)\n'
         original, after, _ = invoke_agent_reformat(tmp_path, source)
-
         assert original == source, 'Original was mutated by helper'
         assert after == source, f'noqa-protected variable was changed:\n{after}'
         assert '_x' in after  # underscore must remain
@@ -72,7 +71,6 @@ class TestAR001FixMode:
         """A variable with no noqa and used at least once should be stripped."""
         source = '_x = 1\nprint(_x)\n'
         _, after, _ = invoke_agent_reformat(tmp_path, source)
-
         assert after == 'x = 1\nprint(x)\n'
 
     def test_unused_var_is_preserved(self, tmp_path: Path) -> None:
@@ -91,7 +89,6 @@ class TestAR001CheckMode:
         source = '_x = 1\nprint(_x)\n'
         before = tmp_path / 'sample.py'
         before.write_text(source)
-
         stdout, rc = invoke_agent_reformat_check(tmp_path, source)
         assert before.read_text() == source, 'Check mode must not modify the file'
         # Return code should be non-zero since AR001 violation detected.
@@ -100,14 +97,12 @@ class TestAR001CheckMode:
     def test_check_mode_output_contains_rule(self, tmp_path: Path) -> None:
         """Stdout from check mode should mention AR001."""
         source = '_x = 1\nprint(_x)\n'
-
         stdout, _ = invoke_agent_reformat_check(tmp_path, source)
         assert 'AR001' in stdout, f"Expected 'AR001' in:\n{stdout}"
 
     def test_no_violation_no_output(self, tmp_path: Path) -> None:
         """A clean file should produce no violations (rc == 0)."""
         source = 'x = 1\nprint(x)\n'
-
         stdout, rc = invoke_agent_reformat_check(tmp_path, source)
         assert rc == 0, f'Expected rc=0 but got {rc}\nstdout={stdout}'
 
@@ -119,21 +114,18 @@ class TestAR001NoqaProtection:
         """Bare '# noqa' on the definition line suppresses AR001."""
         source = '_x = 1  # noqa\nprint(_x)\n'
         _, after, _ = invoke_agent_reformat(tmp_path, source)
-
         assert after == source, 'bare noqa on def line should protect variable'
 
     def test_bracket_noqa_on_definition(self, tmp_path: Path) -> None:
         """'# noqa: [AR001]' on the definition line suppresses AR001."""
         source = '_x = 1  # noqa: [AR001]\nprint(_x)\n'
         _, after, _ = invoke_agent_reformat(tmp_path, source)
-
         assert after == source
 
     def test_noqa_on_usage_line(self, tmp_path: Path) -> None:
         """'# noqa' on the usage line should also protect."""
         source = '_x = 1\nprint(_x)  # noqa\n'
         _, after, _ = invoke_agent_reformat(tmp_path, source)
-
         assert after == source, 'noqa on usage line should protect variable'
 
 
@@ -144,26 +136,22 @@ class TestAR001EdgeCases:
         """Variables starting & ending with double underscore (__x__) keep their name."""
         source = "__version__ = '1.0'\nprint(__version__)\n"
         _, after, _ = invoke_agent_reformat(tmp_path, source)
-
         assert after == source
 
     def test_double_leading_underscore_preserved(self, tmp_path: Path) -> None:
         """Double-underscore prefix (not dunder) should not be stripped."""
         source = '__internal = 1\nprint(__internal)\n'
         _, after, _ = invoke_agent_reformat(tmp_path, source)
-
         assert after == source
 
     def test_ending_underscore_preserved(self, tmp_path: Path) -> None:
         """Trailing underscore (e.g. classmethod 'cls') should not be stripped."""
         source = 'cls_ = 1\nprint(cls_)\n'
         _, after, _ = invoke_agent_reformat(tmp_path, source)
-
         assert after == source
 
     def test_single_usage_is_stripped(self, tmp_path: Path) -> None:
         """Variable with exactly one reference should still be stripped."""
         source = '_data = 42\nprint(_data)\n'
         _, after, _ = invoke_agent_reformat(tmp_path, source)
-
         assert after == 'data = 42\nprint(data)\n'
