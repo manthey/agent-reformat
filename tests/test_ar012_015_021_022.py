@@ -90,8 +90,39 @@ class TestAR012MinimumGap:
         blanks = sum(1 for l in lines_between if not l.strip())
         assert blanks >= 1, 'Blank preserved after deep nested unwinding'
 
-
+    def test_blanks_inside_multiline_string_not_stripped(self, tmp_path):
+        """Blank lines inside mult-line strings are never stripped."""
+        tq = chr(34) * 3
+        file_p = tmp_path / 'string_blanks.py'
+        src_lines = [
+            'x = 1',
+            ('doc = %s' % tq),  # doc="""
+            'first line',
+            '',                 # blank INSIDE string literal!
+            '__second__ part',
+            tq,                # """
+            'y = 2',
+        ]
+        src = '\n'.join(src_lines)
+        file_p.write_text(src)
+        _, rc = run(file_p, src, fixed=True)
+        assert rc == 0
+        after = file_p.read_text()
+        lines_after = after.splitlines(keepends=False)
+        doc_start_idx = next(i for i, l in enumerate(lines_after) if 'doc' in l)
+        # Find closing triple-quote by scanning forward
+        doc_end_idx = doc_start_idx + 1
+        close_str = chr(34) * 3
+        while lines_after[doc_end_idx].strip() != close_str:
+            doc_end_idx += 1
+        lines_inside = lines_after[doc_start_idx + 1:doc_end_idx]
+        blanks_found = sum(1 for line in lines_inside if not line.strip())
+        assert blanks_found >= 1, (
+            f'Expected blank inside string. Got {blanks_found}. Lines:\n'
+            '%s' % repr(lines_after)
+        )
 # === AR015: Trailing blanks normalization ==
+
 
 class TestAR015TrailingBlanks:
     """End-of-file trailing blanks are handled."""
