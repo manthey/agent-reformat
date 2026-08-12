@@ -33,6 +33,13 @@ The hook exposes individual rule codes for granular control. You can activate sp
 | `AR022` | Comments     | Enforce max line length on **comment-only** lines (error only, no auto-fix). Lines exceeding the configured maximum must be manually rewrapped by users or agents into shorter multi-line comments or shortened entirely.          |
 | `AR031` | Emojis       | Remove emoji characters.                                                    |
 | `AR032` | Emojis       | Replace decorative text with plain versions.                                |
+| `AR041` | Underscore (private)  | Strip single leading underscores from **non-exported variables**.         |
+| `AR042` | Underscore (private)  | Strip single leading underscores from **non-exported functions/methods**. |
+| `AR043` | Underscore (private)  | Strip underscores from methods in **non-exported classes**.               |
+
+The **AR00x** rules strip single leading underscores from identifiers regardless of export status. These are safe for application code or when you know the file isn't a library with an explicit public API.
+
+The **AR04x** rules only strip single leading underscores from identifiers that are **not exported** via `__all__` or have public exposure. This is preferred for libraries where you want to signal what functions, methods, and variables are official or quasi-hidden.
 
 ### Default Behavior
 
