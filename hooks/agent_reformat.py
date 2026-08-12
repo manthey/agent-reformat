@@ -836,6 +836,8 @@ def run(cli_args=None):
             blk_codes_all,
             cmt_rules_active, emj_codes_all, gap, comment_len)
     sys.exit(1 if changed else 0)
+
+
 if __name__ == '__main__':
 
     run()

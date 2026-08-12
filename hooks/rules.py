@@ -163,9 +163,10 @@ def read_tox_section(path):
     if 'agent-reformat' not in cp:
         return None
     return dict(cp['agent-reformat'])
+
+
 def read_max_gap(cli_value, path='.'):
     """Resolve --blank-lines-gap from CLI or config files."""
-
     pyproj = read_pyproject_section(path)
     if pyproj is not None:
         val = pyproj.get('blank_lines_gap', pyproj.get('max-gap'))
@@ -183,9 +184,10 @@ def read_max_gap(cli_value, path='.'):
             except (ValueError, TypeError):
                 pass
     return cli_value
+
+
 def read_comment_max(cli_value, path='.'):
     """Resolve --comment-lines-max from CLI or config files."""
-
     pyproj = read_pyproject_section(path)
     if pyproj is not None:
         val = pyproj.get('comment_lines_max', pyproj.get('max-line-length'))
@@ -263,9 +265,10 @@ def rules_from_tox(path: str | Path) -> set[str] | None:
             except ValueError:
                 pass
     return found or None
+
+
 def resolve_rules(cli_rules: set[str], path: str | Path = '.') -> set[str]:
     """Merge CLI rules with pyproject.toml / tox.ini fallback."""
-
     if cli_rules:
         validated: set[str] = set()
         for r in cli_rules:
