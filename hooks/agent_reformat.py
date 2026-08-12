@@ -369,6 +369,8 @@ def fix_blanks(filepath, rules, min_gap=3, dry_run=False, show=False):  # noqa
     prev_lineno = 0
     indent_cause = {0: 'other'}
     gap = min_gap
+    # Track which indentation levels were seen during the current gap block
+    gap_indents_seen = set()
 
     for idx, line in enumerate(lines):
         curr_text = line.strip()
@@ -423,6 +425,17 @@ def fix_blanks(filepath, rules, min_gap=3, dry_run=False, show=False):  # noqa
                     )
                 gap_reached = code_lines_since_blank >= gap
                 same_indent = prev_indent == curr_indent
+                # Fixed: also accept when unwinding from a deeper indent that was 
+                # seen earlier in this block (e.g. multiline call continuation).
+                if not same_indent and prev_indent > curr_indent:
+                    # Check if we've seen any level at or above the current one
+                    # during this gap accumulation → valid return to base level
+                    unwound_to = any(
+                        lvl >= curr_indent for lvl in gap_indents_seen
+                    )
+                    same_or_unwound = unwound_to
+                else:
+                    same_or_unwound = same_indent
 
                 should_keep = False
                 starts_def = any(
@@ -432,7 +445,7 @@ def fix_blanks(filepath, rules, min_gap=3, dry_run=False, show=False):  # noqa
                     should_keep = True
                 elif keep_for_outdent:
                     should_keep = True
-                elif same_indent and gap_reached and not comment_gap_override:
+                elif same_or_unwound and gap_reached and not comment_gap_override:
                     should_keep = True
                 elif curr_has_noqa:
                     should_keep = True
@@ -458,6 +471,10 @@ def fix_blanks(filepath, rules, min_gap=3, dry_run=False, show=False):  # noqa
                     code_lines_since_blank = 0
             consecutive_blanks = 0
             pending_blank = False
+            # Reset the set for the next accumulation cycle
+            gap_indents_seen = set()
+        # Add current indent to the set for this gap block, if not already in it
+        gap_indents_seen.add(curr_indent)
         if curr_indent > prev_indent:
             is_prev_def = prev_text.startswith(('def ', 'async def '))
             if is_prev_def:
