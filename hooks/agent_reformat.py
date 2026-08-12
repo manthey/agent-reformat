@@ -369,14 +369,28 @@ def fix_blanks(filepath, rules, min_gap=3, dry_run=False, show=False):  # noqa
     prev_lineno = 0
     indent_cause = {0: 'other'}
     gap = min_gap
-    # Track which indentation levels were seen during the current gap block
+    # Detect which lines fall inside multi-line strings so we never process
+    # their blank lines, indentation, or content toward the gap logic
+    string_lines = set()
+    try:
+        toks = list(tokenize.generate_tokens(io.StringIO(source).readline))
+        for tok in toks:
+            if tok.type == tokenize.STRING:
+                string_lines.update(range(tok.start[0], tok.end[0] + 1))
+    except (tokenize.TokenError, ValueError):
+        # Tokenization failure or bad IO: processing normally
+        pass
     gap_indents_seen = set()
 
     for idx, line in enumerate(lines):
         curr_text = line.strip()
         curr_lineno = idx + 1
         curr_indent = len(line) - len(line.lstrip())
-
+        # Lines entirely inside multi-line strings pass through verbatim;
+        # their content and whitespace must not affect any gap counts.
+        if curr_lineno in string_lines:
+            output.append(line)
+            continue
         if not curr_text:
             pending_blank = True
             consecutive_blanks += 1
@@ -562,7 +576,7 @@ def check_comment_line_length(filepath, rules, max_len=79):
     # We parse the entire token stream to strictly distinguish real comments
     try:
         tokens = list(tokenize.generate_tokens(io.StringIO(source).readline))
-    except tokenize.TokenizeError:
+    except tokenize.TokenError:
         return []
     violations = []  # line numbers (1-based)
     seen_lines = set()
@@ -635,7 +649,7 @@ def strip_repeated_comments(filepath, rules=frozenset(), dry_run=False, show=Fal
     # We parse the entire token stream to strictly distinguish real comments
     try:
         tokens = list(tokenize.generate_tokens(io.StringIO(source).readline))
-    except tokenize.TokenizeError:
+    except tokenize.TokenError:
         return []
     violations = []  # line numbers (1-based)
     seen_lines = set()
