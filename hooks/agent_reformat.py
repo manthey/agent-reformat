@@ -425,18 +425,17 @@ def fix_blanks(filepath, rules, min_gap=3, dry_run=False, show=False):  # noqa
                     )
                 gap_reached = code_lines_since_blank >= gap
                 same_indent = prev_indent == curr_indent
-                # Fixed: also accept when unwinding from a deeper indent that was 
-                # seen earlier in this block (e.g. multiline call continuation).
+                # Fixed: also accept when unwinding from deeper indent
+                # seen earlier in this block (multiline call continuation).
                 if not same_indent and prev_indent > curr_indent:
-                    # Check if we've seen any level at or above the current one
-                    # during this gap accumulation → valid return to base level
+                    # Track indents accumulated during gap so an unwind to
+                    # one at or above current is valid.
                     unwound_to = any(
                         lvl >= curr_indent for lvl in gap_indents_seen
                     )
                     same_or_unwound = unwound_to
                 else:
                     same_or_unwound = same_indent
-
                 should_keep = False
                 starts_def = any(
                     curr_text.startswith(pfx) for pfx in (
@@ -473,7 +472,7 @@ def fix_blanks(filepath, rules, min_gap=3, dry_run=False, show=False):  # noqa
             pending_blank = False
             # Reset the set for the next accumulation cycle
             gap_indents_seen = set()
-        # Add current indent to the set for this gap block, if not already in it
+        # Track indent during gap block
         gap_indents_seen.add(curr_indent)
         if curr_indent > prev_indent:
             is_prev_def = prev_text.startswith(('def ', 'async def '))

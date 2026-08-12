@@ -33,78 +33,62 @@ class TestAR012MinimumGap:
         assert True  # sanity
 
     def test_multiline_call_unwraps_preserve_blank(self, tmp_path):
-        """Blank lines should be preserved when unwinding from multiline 
+        """Blank lines should be preserved when unwinding from multiline
         call continuation back to the same indent level.
-        E.g., base_level code → continue deep → return to base_level with blank."""
+        """
         file_p = tmp_path / 'multiline_unwrap.py'
-        src = """a = 1
-b = 2
-c = 3
-call_a_function(
-    a, b, c)
-
-d = 4
-e = 5
-f = 6
-"""
-        before_count_blank = src.count('\n\n')
+        src_lines = ['a = 1', 'b = 2', 'c = 3',
+                     'call_a_function(', r'    a, b, c)', '',
+                     'd = 4', 'e = 5', 'f = 6']
+        src = '\n'.join(src_lines) + '\n'
         file_p.write_text(src)
         run(file_p, src, fixed=True)
         after = file_p.read_text()
-        
         # Should preserve the blank between c=3 and d=4
         lines = after.splitlines(keepends=False)
         c_idx = next(i for i, l in enumerate(lines) if l.strip().startswith('c ='))
         d_idx = next(i for i, l in enumerate(lines) if l.strip().startswith('d ='))
-        
         # Check that at least one blank exists between them
-        lines_between = lines[c_idx+1:d_idx]
+        lines_between = lines[c_idx + 1:d_idx]
         blanks = sum(1 for l in lines_between if not l.strip())
-        assert blanks >= 1, "Blank should be preserved after unwinding from multiline call"
-        
+        assert blanks >= 1, 'Blank should be preserved after unwinding from multiline call'
+
     def test_class_method_multiline_unwraps_preserve_blank(self, tmp_path):
         """Similar unwinding inside a class method."""
         file_p = tmp_path / 'class_unwrap.py'
-        src = """class Foo:
-    val1 = bar(
-        arg)
-
-    def done(self):
-        pass
-"""
+        src_lines = ['class Foo:',
+                     r'    val1 = bar(', '        arg)', '',
+                     '    def done(self):', '        pass']
+        src = '\n'.join(src_lines) + '\n'
         file_p.write_text(src)
         run(file_p, src, fixed=True)
         after = file_p.read_text()
-        
+
         lines = after.splitlines(keepends=False)
         val_idx = next(i for i, l in enumerate(lines) if l.strip().startswith('val1'))
         def_idx = next(i for i, l in enumerate(lines) if 'def done' in l)
-        lines_between = lines[val_idx+1:def_idx]
+        lines_between = lines[val_idx + 1:def_idx]
         blanks = sum(1 for l in lines_between if not l.strip())
-        assert blanks >= 1, "Blank preserved inside class method unwinding"
+        assert blanks >= 1, 'Blank preserved inside class method unwinding'
 
     def test_deep_nested_multiline_call_unwrap(self, tmp_path):
         """Unwinding from deeply nested multiline calls."""
         file_p = tmp_path / 'deep_unwrap.py'
-        src = """def outer():
-    x = 1
-    y = 2
-    result = deep_call(
-        inner_arg,
-            deeper_nested())
-
-    return result
-"""
+        src_lines = ['def outer():',
+                     r'    x = 1', '    y = 2',
+                     r'    result = deep_call(', '        inner_arg,',
+                     r'            deeper_nested())', '', r'    return result']
+        src = '\n'.join(src_lines) + '\n'
         file_p.write_text(src)
         run(file_p, src, fixed=True)
         after = file_p.read_text()
-        
+
         lines = after.splitlines(keepends=False)
         result_idx = next(i for i, l in enumerate(lines) if 'result = deep_call' in l)
         return_idx = next(i for i, l in enumerate(lines) if 'return result' in l)
-        lines_between = lines[result_idx+1:return_idx]
+        lines_between = lines[result_idx + 1:return_idx]
         blanks = sum(1 for l in lines_between if not l.strip())
-        assert blanks >= 1, "Blank preserved after deep nested unwinding"
+        assert blanks >= 1, 'Blank preserved after deep nested unwinding'
 
 
 # === AR015: Trailing blanks normalization ==
