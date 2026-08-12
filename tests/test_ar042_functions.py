@@ -47,7 +47,8 @@ class TestAllDefined:
         """Function not in __all__ gets underscore stripped."""
         src = "__all__ = ['public']\ndef _work(): pass\n_work()\n"
         prev, result = run_hook(tmp_path, src)
-        assert 'def work()' not in result
+        assert 'def work()' in result
+        assert 'def _work()' not in result
 
     def test_exported_func_keeps_underline(self, tmp_path: Path) -> None:
         """Function in __all__ keeps its underscore."""

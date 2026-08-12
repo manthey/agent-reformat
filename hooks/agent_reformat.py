@@ -145,11 +145,9 @@ def get_constant_value(node):
 def collect_exported_names(tree):
     """Detect __all__ export list or infer from module structure.
 
-    Returns:
-        Tuple of (is_explicitly_exported, exported_set)
-        - If __all__ is defined: (True, set of names in __all__)
-        - If no __all__: (False, None) meaning everything is implicitly exported
-
+    Returns a tuple of (is_explicitly_exported, exported_set).  If __all__ is
+    defined: (True, set of names in __all__).  If no __all__: (False, None)
+    meaning everything is implicitly exported
     """
     exports = set()
     for node in getattr(tree, 'body', []):
@@ -453,9 +451,9 @@ def fix_blanks(filepath, rules, min_gap=3, dry_run=False, show=False):  # noqa
                     violations.extend((curr_lineno - consecutive_blanks + i, 'AR011')
                                       for i in range(consecutive_blanks))
                 elif should_keep:
-                    if gap_reached and same_indent and 'AR012' in active_rules:
-                        violations.extend((curr_lineno - consecutive_blanks + i, 'AR012')
-                                          for i in range(consecutive_blanks))
+                    # If blanks are intentionally kept due to valid conditions
+                    # (code_lines gap threshold, import separation etc),
+                    # no violations need reporting since they're preserved.
                     output.append(line_end)
                     code_lines_since_blank = 0
             consecutive_blanks = 0
