@@ -415,6 +415,17 @@ def fix_blanks(filepath, rules, min_gap=3, dry_run=False, show=False):  # noqa
                     curr_text.startswith(pfx) for pfx in (
                         '@', 'def ', 'async def ', 'class '))
                 if starts_def and not in_decorator_chain:
+                    # Normalize to exactly 2 blank lines before def/class
+                    # (PEP8). Only report AR011 violations for excess blanks
+                    # beyond PEP8 standard.
+                    target_blanks = 2  # PEP8 standard for top-level def/class
+                    excess_blanks = consecutive_blanks - target_blanks
+                    if excess_blanks > 0:
+                        # Report the original line numbers of excess blank
+                        # lines being removed.
+                        first_blank_lineno = curr_lineno - consecutive_blanks
+                        violations.extend((first_blank_lineno + i, 'AR011')
+                                          for i in range(excess_blanks))
                     output.append(line_end + line_end)
                     write_pep8_two = True
             if not write_pep8_two:
