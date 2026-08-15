@@ -1,4 +1,3 @@
-"""Tests for AR013: Remove blank lines when fewer than min_gap consecutive statements at same indent."""
 from __future__ import annotations
 
 import sys
@@ -73,11 +72,11 @@ class TestAR013FewStatementsRemoved:
 
     def test_two_statements_one_blank_removed(self, tmp_path: Path) -> None:
         """Two statements at same indent remove blank (2 < min_gap)."""
-        src = '''def foo():
+        src = """def foo():
     a = 1
 
     b = 2
-'''
+"""
         _, after = run_fix(tmp_path, src)
         # Inside function: 2 statements < min_gap -> remove blank
         assert '    a = 1\n    b = 2' in after or 'a = 1\nb = 2' in after
@@ -108,12 +107,12 @@ class TestAR013PreservedBlanks:
 
     def test_blank_after_func_body_to_module_level(self, tmp_path: Path) -> None:
         """Blank after function body returns to module level preserved."""
-        src = '''def foo():
+        src = """def foo():
     pass
 
 
 x = 1
-'''
+"""
         _, after = run_fix(tmp_path, src)
         # Blank before x=1 at module level should be preserved as section
         # separator
@@ -145,7 +144,7 @@ class TestAR013ComplexScenarios:
 
     def test_block_with_many_statements_keeps_blanks(self, tmp_path: Path) -> None:
         """Block with >= min_gap statements can have blanks kept."""
-        src = '''def foo():
+        src = """def foo():
     a = 1
     b = 2
 
@@ -153,32 +152,33 @@ class TestAR013ComplexScenarios:
     c = 3
     d = 4
     e = 5
-'''
+"""
         _, after = run_fix(tmp_path, src)
         # Inside function: 5 statements (a,b,c,d,e) all at indent 4 -> group of
         # 5 >= min_gap Blanks preserved among them
-        assert 'b = 2\n' in after and '\n    c = 3' in after
+        assert 'b = 2\n' in after
+        assert '\n    c = 3' in after
 
     def test_if_block_few_statements_cleans(self, tmp_path: Path) -> None:
         """Few statements inside if block -> clean up blanks."""
-        src = '''if True:
+        src = """if True:
     a = 1
 
     b = 2
-'''
+"""
         _, after = run_fix(tmp_path, src)
         # Two statements at indent 4 inside if < min_gap -> blank removed
         assert 'a = 1\n    b = 2' in after or 'a = 1\nb = 2' in after
 
     def test_nested_function_few_stmts(self, tmp_path: Path) -> None:
         """Module-level few statements should be cleaned."""
-        src = '''a = 1
+        src = """a = 1
 
 b = 2
 
 
 x = 99
-'''
+"""
         _, after = run_fix(tmp_path, src)
         # All three at indent 0: ONE group of 3 (>= min_gap), but blank lines
         # kept only for section separation. Actually 3 >= 3 so per our
@@ -219,12 +219,12 @@ class TestAR013WithOtherRules:
     def test_ar012_treated_as_statement_marker(self, tmp_path: Path) -> None:
         """Comments count as statements for the count."""
         # With AR013 alone and 3 total (a, comment, b), blanks should be kept
-        src = '''a = 1
+        src = """a = 1
 
 # middle comment
 
 b = 2
-'''
+"""
         _, after = run_fix(tmp_path, src)
         # 3 >= min_gap=3 so blank preserved between a and comment
 

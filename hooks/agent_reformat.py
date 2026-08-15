@@ -331,6 +331,7 @@ def strip_underscores(filepath, rules, dry_run=False, show=False):  # noqa: C901
                  NESTED_FUNC_KIND: ('AR004', 'AR044')}
         base, priv = codes[kind]
         return priv if use_new_rules else base
+
     def need_check_export_exposure(kind):
         """Return True if this kind needs export exposure checking."""
         # Methods always need check (need to know their containing class)
