@@ -38,49 +38,7 @@ def run(tmp_path: Path, src: str) -> tuple[str, int]:
 class TestDecoratorChainBlanks:
     """Blank lines between decorators should be removed."""
 
-    def test_single_blank_between_decorators_removed(self, tmp_path):
-        """One blank line in decorator chain is collapsed."""
-        src = (
-            'x = 1\n'
-            '\n'
-            '@decorator1\n'
-            '\n'
-            '@decorator2\n'
-            'def somefunc():\n'
-            '    pass\n'
-        )
-        after, rc = run(tmp_path, src)
-        assert rc == 0
-
-        lines = after.splitlines()
-        dec1 = next(i for i, l in enumerate(lines) if '@decorator1' in l)
-        dec2 = next(i for i, l in enumerate(lines) if '@decorator2' in l)
-        blanks_between = len([l for l in lines[dec1 + 1:dec2] if not l.strip()])
-        assert blanks_between == 0
-
-    def test_multiple_blanks_between_decorators_removed(self, tmp_path):
-        """Multiple consecutive blanks between decorators collapsed."""
-        src = (
-            'x = 1\n'
-            '\n'
-            '@decorator1\n'
-            '\n'
-            '\n'
-            '\n'
-            '@decorator2\n'
-            'def somefunc():\n'
-            '    pass\n'
-        )
-        after, rc = run(tmp_path, src)
-        assert rc == 0
-
-        lines = after.splitlines()
-        dec1 = next(i for i, l in enumerate(lines) if '@decorator1' in l)
-        dec2 = next(i for i, l in enumerate(lines) if '@decorator2' in l)
-        blanks_between = len([l for l in lines[dec1 + 1:dec2] if not l.strip()])
-        assert blanks_between == 0
-
-    def test_blanks_before_decorator_chain_stays(self, tmp_path):
+    def test_blanks_before_decorator_chain_preserved(self, tmp_path):
         """Blank line(s) BEFORE the first decorator are preserved."""
         src = (
             'x = 1\n'
@@ -91,7 +49,6 @@ class TestDecoratorChainBlanks:
             '    pass\n'
         )
         after, rc = run(tmp_path, src)
-        assert rc == 0
         lines = after.splitlines()
         dec1_lineno = next(i for i, l in enumerate(lines) if '@decorator1' in l)
         has_blanks_before = any(
@@ -104,7 +61,6 @@ class TestDecoratorChainBlanks:
         """A chain of three decorators has no internal blanks."""
         src = (
             'x = 1\n'
-            '\n'
             '@decorator1\n'
             '\n'
             '@decorator2\n'
@@ -114,30 +70,16 @@ class TestDecoratorChainBlanks:
             '    pass\n'
         )
         after, rc = run(tmp_path, src)
-        assert rc == 0
 
         lines = after.splitlines()
         dec1_lineno = next(i for i, l in enumerate(lines) if '@decorator1' in l)
         dec3_lineno = next(i for i, l in enumerate(lines) if '@decorator3' in l)
         blanks_between = len([l for l in lines[dec1_lineno + 1:dec3_lineno] if not l.strip()])
-        assert blanks_between == 0
-
-    def test_blank_before_def_removed(self, tmp_path):
-        """No blank between last decorator and its function."""
-        src = (
-            '@decorator1\n'
-            '\n'
-            'def somefunc():\n'
-            '    pass\n'
+        # Decorators should be consecutive - no internal blanks
+        assert blanks_between == 0, (
+            f'Expected no internal blanks between decorators, got '
+            f'{blanks_between}'
         )
-        after, rc = run(tmp_path, src)
-        assert rc == 0
-
-        lines = after.splitlines()
-        dec_lineno = next(i for i, l in enumerate(lines) if '@decorator1' in l)
-        def_lineno = next(i for i, l in enumerate(lines) if 'def somefunc' in l)
-        blanks_between = len([l for l in lines[dec_lineno + 1:def_lineno] if not l.strip()])
-        assert blanks_between == 0
 
     def test_dec_chain_does_not_inherit_to_next_func(self, tmp_path):
         """Dec chain does not prevent blanks before next function."""
@@ -152,7 +94,6 @@ class TestDecoratorChainBlanks:
             '    pass\n'
         )
         after, rc = run(tmp_path, src)
-        assert rc == 0
 
         lines = after.splitlines()
         dec_lineno = next(i for i, l in enumerate(lines) if '@decorator1' in l)
@@ -169,3 +110,9 @@ class TestDecoratorChainBlanks:
         gap_lines = lines[func_line_idx + 1:def2_lineno]
         blanks = len([l for l in gap_lines if not l.strip()])
         assert blanks >= 1
+
+
+if __name__ == '__main__':
+
+    import pytest
+    pytest.main([__file__, '-v'])

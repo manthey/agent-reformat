@@ -23,12 +23,10 @@ The hook exposes individual rule codes for granular control. You can activate sp
 | `AR001` | Underscore   | Strip single leading underscores from **module-level variables**.           |
 | `AR002` | Underscore   | Strip single leading underscores from **top-level functions**.              |
 | `AR003` | Underscore   | Strip single leading underscores from **class methods**.                    |
-| `AR011` | Blank lines  | Collapse multiple consecutive blanks before `def`/`class`/`@` (PEP-8 E302). |
-| `AR012` | Blank lines  | Enforce minimum code-line gap between blanks otherwise.                     |
-| `AR013` | Blank lines  | Preserve blank lines that separate import blocks from other code.            |
-| `AR014` | Blank lines  | Preserve blank lines when outdenting from a `def`/`class` block.            |
-| `AR015` | Blank lines  | Normalize trailing blank lines at end of file (PEP-8 E305/E306).           |
-| `AR016` | Blank lines  | Remove blank lines surrounding comments.                                    |
+| `AR011` | Blank lines  | Remove blank lines before indent/outdent statement boundaries (not between def/class blocks). |
+| `AR012` | Blank lines  | Remove blank lines immediately adjacent to comments.                        |
+| `AR013` | Blank lines  | Remove blank lines when consecutive statements at same indent are fewer than min_gap. |
+| `AR014` | Blank lines  | Remove blank lines between decorators and their target function/class definition. |
 | `AR021` | Comments     | Remove comment-only lines repeating 4+ identical non-whitespace chars.      |
 | `AR022` | Comments     | Enforce max line length on **comment-only** lines (error only, no auto-fix). Lines exceeding the configured maximum must be manually rewrapped by users or agents into shorter multi-line comments or shortened entirely.          |
 | `AR031` | Emojis       | Remove emoji characters.                                                    |

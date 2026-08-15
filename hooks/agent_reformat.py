@@ -541,7 +541,7 @@ def fix_blanks(filepath, rules, min_gap=3, dry_run=False, show=False):  # noqa
         if pep723_after:
             # Preserve one blank line right after PEP 723 block
             output.append(line_end)
-        elif last_def_class or has_many:
+        elif last_def_class or consecutive_blanks >= 2:
             output.append(line_end + line_end)
         elif active_rules & {'AR015'}:
             violations.extend((idx - consecutive_blanks + i, 'AR015')
@@ -623,7 +623,7 @@ def check_comment_line_length(filepath, rules, max_len=79):
                 # (i.e., no code before the # on that line)
                 hash_pos = line_text.find('#')
                 if hash_pos >= 0 and not line_text[:hash_pos].strip():
-                    if len(line_text) > max_len:
+                    if len(line_text.rstrip()) > max_len:
                         violations.append(lineno)
                         seen_lines.add(lineno)
     return violations

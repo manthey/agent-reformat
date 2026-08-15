@@ -23,19 +23,16 @@ RULE_CATALOG: dict[str, dict[str, str]] = {
               'desc': 'Strip single leading underscores from '
                        'methods in non-exported classes.'},
     'AR011': {'group': 'blanks',
-              'desc': 'Collapse multiple consecutive blanks '
-                       'before def/class/decorator.'},
+              'desc': 'Remove blank lines before or after indent/'
+                       'outdent statement boundaries.'},
     'AR012': {'group': 'blanks',
-              'desc': 'Enforce minimum code-line gap between blanks.'},
+              'desc': 'Remove blank lines immediately before/after comments.'},
     'AR013': {'group': 'blanks',
-              'desc': 'Preserve blank lines separating import blocks.'},
+              'desc': 'Remove blank lines when consecutive statements '
+                       'at same indent are fewer than min_gap.'},
     'AR014': {'group': 'blanks',
-              'desc': 'Preserve blank lines when outdenting '
-                       'from blocks.'},
-    'AR015': {'group': 'blanks',
-              'desc': 'Normalize trailing blank lines at end of file.'},
-    'AR016': {'group': 'blanks',
-              'desc': 'Remove blank lines before and after comments.'},
+              'desc': 'Remove blank lines between decorators and their '
+                       'target function/class definition.'},
     'AR021': {'group': 'comments',
               'desc': 'Remove comment-only lines repeating 4+'
                        ' identical non-whitespace chars.'},
@@ -50,7 +47,7 @@ RULE_CATALOG: dict[str, dict[str, str]] = {
 GROUPS: dict[str, tuple[str, ...]] = {
     'underscores': ('AR001', 'AR002', 'AR003'),
     'underscores-private': ('AR041', 'AR042', 'AR043'),
-    'blanks': ('AR011', 'AR012', 'AR013', 'AR014', 'AR015', 'AR016'),
+    'blanks': ('AR011', 'AR012', 'AR013', 'AR014'),
     'emojis': ('AR031', 'AR032'),
     'comments': ('AR021', 'AR022'),
 }
@@ -100,12 +97,12 @@ def expand_shorthand(name: str) -> tuple[str, ...]:
     'underscores-private') into its corresponding codes.
     """
     clean = name.replace('-', '').lower()
-    codes = GROUPS.get(clean)
-    if not codes:
-        # Also try lowercase version preserving hyphens
-        # i.e. underscores-private
-        alt = name.lower()
-        codes = GROUPS.get(alt)
+    if clean in GROUPS:
+        return GROUPS[clean]
+    # Also try lowercase version preserving hyphens
+    # i.e. underscores-private
+    alt = name.lower()
+    codes = GROUPS.get(alt)
     msg: str
     if not codes:  # type: ignore[unreachable]
         avail = list(GROUPS.keys())
@@ -217,12 +214,9 @@ def rules_from_pyproject(path: str | Path) -> set[str] | None:
     section = (cfg.get('tool', {}) or {}).get('agent-reformat')
     if not isinstance(section, dict):
         return None
-    # Also resolve max-gap and comment-line-length from same config
     found = find_rules_from_section(section.get('rules'))
     for key in GROUPS:
         val = section.get(key)
-        if not val:
-            continue
         if isinstance(val, bool) and val:
             found.update(expand_shorthand(key))
         elif isinstance(val, str):
