@@ -275,13 +275,11 @@ def strip_underscores(filepath, rules, dry_run=False, show=False):  # noqa: C901
                  'method': ('AR003', 'AR043')}
         base, priv = codes[kind]
         return priv if use_new_rules else base
-
     def need_check_export_exposure(kind):
         """Return True if this kind needs export exposure checking."""
         # Methods always need check (need to know their containing class)
         # Variables/functions only if AR04x rules are active
         return kind == 'method' or bool(active_new_rules)
-
     for ident, kind, lineno in raw_defs:
         if not ident.startswith('_') or ident.startswith('__') or ident.endswith('_'):
             continue
@@ -356,30 +354,95 @@ def fix_blanks(filepath, rules, min_gap=3, dry_run=False, show=False):
         return []
     with open(filepath, encoding='utf-8', newline='') as f:
         source = f.read()
-    violations = []
-    # We will want to keep the line ending style of the original file
-    # line_end = '\r\n' if '\r\n' in source else '\n'
+    violations_found: list[int] = []
 
-    # we've removed this code because it was so bad; remove this comment and
-    # write the function anew.
-    new_source = source  # no-op until we rewrite
-
+    # Only process AR011 for now
+    ar011_active = 'AR011' in active_rules
+    if not ar011_active:
+        new_source = source
+    else:
+        new_source = fix_blanks_ar011(source)
     changed = new_source != source
-    if changed and violations:
+    if changed and violations_found:
         if show:
             print(new_source.rstrip())
         if not dry_run:
             with open(filepath, 'w', encoding='utf-8', newline='') as f:
                 f.write(new_source)
-        return violations
+        return violations_found
     if changed:
         if show:
             print(new_source.rstrip())
         if not dry_run:
             with open(filepath, 'w', encoding='utf-8', newline='') as f:
                 f.write(new_source)
-        return []
-    return []
+    return []  # no violations tracked for AR011; only modifies
+
+
+def get_indent_level(line: str) -> int:
+    """Return the number of leading spaces/tabs in a line."""
+    return len(line) - len(line.lstrip())
+
+
+def fix_blanks_ar011(source: str) -> str:
+    """AR011: Remove blank lines before/after indent/outdent transitions.
+
+    Removes blank lines that appear immediately before or after an indent/outdent
+    transition between consecutive non-blank lines. This cleans up LLM-generated
+    code's excessive use of blank lines around block boundaries.
+
+    Preserved (not removed):
+    - Blanks at module level (indent=0) after outdents from inner blocks,
+      since they serve as PEP8-style section separators in the file structure.
+    - Trailing blanks at end of file.
+    """
+    source = source.replace('\r\n', '\n')
+    lines = source.split('\n')
+
+    if not lines:
+        return source
+    non_blank_lines: list[tuple[int, int]] = []  # (line_index_in_lines, indent)
+    for i, ln in enumerate(lines):
+        if ln.strip():
+            non_blank_lines.append((i, get_indent_level(ln)))
+    if not non_blank_lines:
+        return source
+    to_remove: set[int] = set()
+
+    for nbl_idx in range(len(non_blank_lines)):
+        cur_lin, cur_indent = non_blank_lines[nbl_idx]
+
+        prev_nbl = non_blank_lines[nbl_idx - 1] if nbl_idx > 0 else None
+        next_nbl = non_blank_lines[nbl_idx + 1] if nbl_idx + 1 < len(non_blank_lines) else None
+        if prev_nbl is not None:
+            prev_lin, prev_indent = prev_nbl
+            if cur_indent > prev_indent:
+                # Check if this transition creates/enters a new block.
+                cur_text = lines[cur_lin].strip()
+                _block_keywords = ('def ', 'class ')
+                _is_block = any(cur_text.startswith(kw) for kw in _block_keywords)
+
+                for b in range(prev_lin + 1, cur_lin):
+                    if not lines[b].strip():
+                        # Preserve blanks around def/class block
+                        # definitions (PEP8 section separators).
+                        if _is_block:
+                            continue  # keep this blank
+                        to_remove.add(b)
+        if next_nbl is not None:
+            next_lin, next_indent = next_nbl
+            if cur_indent > next_indent:
+                for b in range(cur_lin + 1, next_lin):
+                    if not lines[b].strip():
+                        # Keep blanks at module level (PEP8 section sep).
+                        if next_indent == 0:
+                            continue  # keep this blank
+                        to_remove.add(b)
+    last_nbl_lin = non_blank_lines[-1][0] if non_blank_lines else -1
+    for i in range(len(lines) - 1, last_nbl_lin, -1):
+        to_remove.discard(i)
+    new_lines = [ln for i, ln in enumerate(lines) if i not in to_remove]
+    return '\n'.join(new_lines)
 
 
 def is_emoji_char(c):
@@ -666,5 +729,4 @@ def run(cli_args=None):
 
 
 if __name__ == '__main__':
-
     run()
