@@ -32,6 +32,8 @@ get_rule_group = rules.get_rule_group
 read_max_gap = rules.read_max_gap
 read_comment_max = rules.read_comment_max
 
+NESTED_FUNC_KIND = 'nested_func'
+
 SUPP_EMOJI_RANGES = [
     (0x1F300, 0x1F9FF),  # Misc symbols, emoticons, transport
     (0x1FA00, 0x1FAFF),  # Chess, shapes, symbols extended
@@ -111,6 +113,58 @@ def has_noqa(line, rules=frozenset()):
         except ValueError:
             pass
     return bool(code_set & rules) if code_set else True
+
+
+def get_nested_func_parent_class(nested_name, nested_lineno, tree, class_is_public):
+    """Find which public class contains this nested function using AST."""
+    current_classes = []
+    result = None
+
+    def visit(node):
+        nonlocal result
+        if isinstance(node, ast.ClassDef):
+            current_classes.append((node.name, len(current_classes)))
+            for child in getattr(node, 'body', []):
+                visit(child)
+            current_classes.pop()
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for item in ast.walk(node):
+                if hasattr(item, 'name') and hasattr(item, 'lineno'):
+                    if item.name == nested_name and item.lineno == nested_lineno:
+                        if current_classes:
+                            containing_cls = current_classes[-1][0]
+                            if class_is_public.get(containing_cls, False):
+                                result = containing_cls
+                        break
+            if result:
+                return
+
+    for child in getattr(tree, 'body', []):
+        visit(child)
+        if result:
+            break
+
+    return result
+
+
+def collect_nested_functions(tree):
+    """Collect nested function names and line numbers."""
+    result = []
+
+    def visit(node):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for child_node in getattr(node, 'body', []):
+                if isinstance(child_node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    result.append((child_node.name, child_node.lineno))
+                visit(child_node)
+        elif isinstance(node, ast.ClassDef):
+            for child_node in getattr(node, 'body', []):
+                visit(child_node)
+
+    for node in getattr(tree, 'body', []):
+        visit(node)
+    result.sort(key=lambda x: x[1])
+    return result
 
 
 def collect_definitions_by_type(tree):
@@ -216,6 +270,8 @@ def is_protected(active_underscore_rules, source, usages, ident, kind, lineno): 
                 kept = True
             elif kind == 'method' and code in ('AR003', 'AR043'):
                 kept = True
+            elif kind is NESTED_FUNC_KIND and code in ('AR004', 'AR044'):
+                kept = True
             if kind == 'variable' and code == 'AR001':
                 kept = True
             elif kind == 'function' and code == 'AR002':
@@ -240,7 +296,7 @@ def is_protected(active_underscore_rules, source, usages, ident, kind, lineno): 
 
 
 def strip_underscores(filepath, rules, dry_run=False, show=False):  # noqa: C901
-    """Strip underscores per AR001-AR043 rules. Returns violations."""
+    """strip_underscores per AR001-AR044 rules. Returns violations."""
     file_path = Path(filepath)
     with open(file_path, encoding='utf-8', newline='') as f:
         source = f.read()
@@ -253,10 +309,12 @@ def strip_underscores(filepath, rules, dry_run=False, show=False):  # noqa: C901
         if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
             usages.setdefault(node.id, []).append(getattr(node, 'lineno', None))
     raw_defs = collect_definitions_by_type(tree)
+    # Collect nested function definitions
+    nested_defs = collect_nested_functions(tree)
     # Determine which rule groups are active
     old_underscore_codes = expand_shorthand('underscores') or (
-        'AR001', 'AR002', 'AR003')
-    new_underscore_codes = {'AR041', 'AR042', 'AR043'}
+        'AR001', 'AR002', 'AR003', 'AR004')
+    new_underscore_codes = {'AR041', 'AR042', 'AR043', 'AR044'}
     active_old_rules = set(rules) & set(old_underscore_codes)
     active_new_rules = set(rules) & new_underscore_codes
     if not active_old_rules and not active_new_rules:
@@ -272,7 +330,8 @@ def strip_underscores(filepath, rules, dry_run=False, show=False):  # noqa: C901
         """Return the appropriate rule code for reporting."""
         codes = {'variable': ('AR001', 'AR041'),
                  'function': ('AR002', 'AR042'),
-                 'method': ('AR003', 'AR043')}
+                 'method': ('AR003', 'AR043'),
+                 NESTED_FUNC_KIND: ('AR004', 'AR044')}
         base, priv = codes[kind]
         return priv if use_new_rules else base
 
@@ -334,8 +393,45 @@ def strip_underscores(filepath, rules, dry_run=False, show=False):  # noqa: C901
         replacements[ident] = ident.lstrip('_')
         violations.append(
             (lineno, get_rule_code(kind, bool(active_new_rules and not active_old_rules))))
-    if not violations:
-        return []
+
+    # Process nested functions for AR004/AR044
+    usages = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
+            usages.setdefault(node.id, []).append(getattr(node, 'lineno', None))
+
+    has_ar004 = 'AR004' in set(rules) & {'AR001', 'AR002', 'AR003', 'AR004'}
+    has_ar044 = 'AR044' in set(rules) & {'AR041', 'AR042', 'AR043', 'AR044'}
+
+    for ident, lineno in nested_defs:
+        if not ident.startswith('_') or ident.startswith('__') or ident.endswith('_'):
+            continue
+
+        # Skip unused nested functions
+        if usages.get(ident, 0) == 0:
+            continue
+
+        # For AR044: only strip when inside a non-exported class (or no parent
+        # class with __all__)
+        skip_for_ar044 = False
+        if has_ar044 and not has_ar004:
+            if all_defined:  # When __all__ is defined
+                parent_cls = get_nested_func_parent_class(ident, lineno, tree,
+                                                          collect_class_exports(tree))
+                if parent_cls:  # Inside a public class - don't strip under AR044
+                    skip_for_ar044 = True
+            else:
+                # No __all__ means everything is implicitly public
+                skip_for_ar044 = True
+
+        if not skip_for_ar044 and (has_ar004 or has_ar044):
+            all_active_underscore_rules = set(rules) & {'AR001', 'AR002', 'AR003', 'AR004',
+                                                        'AR041', 'AR042', 'AR043', 'AR044'}
+            if not is_protected(all_active_underscore_rules, source, usages, ident,
+                                'nested_func', lineno):
+                replacements[ident] = ident.lstrip('_')
+                code = 'AR004' if has_ar004 else 'AR044'
+                violations.append((lineno, code))
     new_source = source
     for old, new in sorted(replacements.items(), key=len, reverse=True):
         pattern = r'\b' + re.escape(old) + r'\b'
@@ -496,7 +592,8 @@ def fix_blanks_ar012(source: str) -> str:  # noqa: C901
         if line.strip():  # not a blank line - skip
             continue
         # Don't touch trailing blanks at end of file
-        # Convert to 1-based for consistency with comment_lines which is 1-based
+        # Convert to 1-based for consistency with comment_lines which is
+        # 1-based
         blank_line_num = idx + 1  # 1-based line number of this blank line
         if blank_line_num >= trailing_start:
             continue

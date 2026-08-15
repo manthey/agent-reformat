@@ -23,6 +23,7 @@ The hook exposes individual rule codes for granular control. You can activate sp
 | `AR001` | Underscore   | Strip single leading underscores from **module-level variables**.           |
 | `AR002` | Underscore   | Strip single leading underscores from **top-level functions**.              |
 | `AR003` | Underscore   | Strip single leading underscores from **class methods**.                    |
+| `AR004` | Underscore   | Strip single leading underscores from **nested functions**.                 |
 | `AR011` | Blank lines  | Remove blank lines before indent/outdent statement boundaries (not between def/class blocks). |
 | `AR012` | Blank lines  | Remove blank lines immediately adjacent to comments.                        |
 | `AR013` | Blank lines  | Remove blank lines when consecutive statements at same indent are fewer than min_gap. |
@@ -34,6 +35,7 @@ The hook exposes individual rule codes for granular control. You can activate sp
 | `AR041` | Underscore (private)  | Strip single leading underscores from **non-exported variables**.         |
 | `AR042` | Underscore (private)  | Strip single leading underscores from **non-exported functions/methods**. |
 | `AR043` | Underscore (private)  | Strip underscores from methods in **non-exported classes**.               |
+| `AR044` | Underscore (private)  | Strip single leading underscores from **non-exported nested functions**.  |
 
 The **AR00x** rules strip single leading underscores from identifiers regardless of export status. These are safe for application code or when you know the file isn't a library with an explicit public API.
 

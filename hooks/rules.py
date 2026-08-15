@@ -13,6 +13,9 @@ RULE_CATALOG: dict[str, dict[str, str]] = {
                        'top-level functions.'},
     'AR003': {'group': 'underscores',
               'desc': 'Strip single leading underscores from methods.'},
+    'AR004': {'group': 'underscores',
+              'desc': 'Strip single leading underscores from '
+                       'nested functions.'},
     'AR041': {'group': 'underscores',
               'desc': 'Strip single leading underscores from '
                        'non-exported variables.'},
@@ -22,6 +25,9 @@ RULE_CATALOG: dict[str, dict[str, str]] = {
     'AR043': {'group': 'underscores',
               'desc': 'Strip single leading underscores from '
                        'methods in non-exported classes.'},
+    'AR044': {'group': 'underscores',
+              'desc': 'Strip single leading underscores from '
+                       'non-exported nested functions.'},
     'AR011': {'group': 'blanks',
               'desc': 'Remove blank lines before or after indent/'
                        'outdent statement boundaries.'},
@@ -45,8 +51,8 @@ RULE_CATALOG: dict[str, dict[str, str]] = {
               'desc': 'Replace decorative text with plain versions.'},
 }
 GROUPS: dict[str, tuple[str, ...]] = {
-    'underscores': ('AR001', 'AR002', 'AR003'),
-    'underscores-private': ('AR041', 'AR042', 'AR043'),
+    'underscores': ('AR001', 'AR002', 'AR003', 'AR004'),
+    'underscores-private': ('AR041', 'AR042', 'AR043', 'AR044'),
     'blanks': ('AR011', 'AR012', 'AR013', 'AR014'),
     'emojis': ('AR031', 'AR032'),
     'comments': ('AR021', 'AR022'),
