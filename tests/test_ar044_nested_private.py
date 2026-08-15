@@ -52,22 +52,22 @@ class TestNoAllDefined:
 
     def test_nested_in_class_not_stripped(self, tmp_path: Path) -> None:
         """Nested function in class without __all__ keeps underscore."""
-        src = '''class Foo:
+        src = """class Foo:
     def method(self):
         def _helper():
             pass
         _helper()
-'''
+"""
         prev, result = run_hook(tmp_path, src)
         assert '_helper' in result
 
     def test_nested_in_fn_not_stripped(self, tmp_path: Path) -> None:
         """Nested function in function without __all__ keeps underscore."""
-        src = '''def outer():
+        src = """def outer():
     def _inner():
         pass
     _inner()
-'''
+"""
         prev, result = run_hook(tmp_path, src)
         assert '_inner' in result
 
@@ -80,41 +80,41 @@ class TestAllDefined:
 
     def test_nested_in_private_class_stripped(self, tmp_path: Path) -> None:
         """Function inside private class's method gets underscore stripped."""
-        src = '''__all__ = ['Public']
+        src = """__all__ = ['Public']
 
 class _PrivateClass:
     def method(self):
         def _helper():
             pass
         _helper()
-'''
+"""
         prev, result = run_hook(tmp_path, src)
         assert 'def helper()' in result
         assert 'def _helper()' not in result
 
     def test_nested_in_public_class_kept(self, tmp_path: Path) -> None:
         """Nested function inside public class keeps underscore."""
-        src = '''__all__ = ['PublicClass']
+        src = """__all__ = ['PublicClass']
 
 class PublicClass:
     def method(self):
         def _helper():
             pass
         _helper()
-'''
+"""
         prev, result = run_hook(tmp_path, src)
         assert '_helper' in result  # Not stripped (public class)
 
     def test_nested_inside_non_all_class_stripped(self, tmp_path: Path) -> None:
         """Nested function inside class not in __all__ gets stripped."""
-        src = '''__all__ = ['Public']
+        src = """__all__ = ['Public']
 
 class UnlistedClass:
     def method(self):
         def _inner():
             pass
         _inner()
-'''
+"""
         prev, result = run_hook(tmp_path, src)
         # UnlistedClass is implicitly private (not in __all__), so nested func
         # stripped
@@ -122,13 +122,13 @@ class UnlistedClass:
 
     def test_nested_in_func_with_all_context_stripped(self, tmp_path: Path) -> None:
         """Nested function inside top-level function not in all gets stripped."""
-        src = '''__all__ = ['public_func']
+        src = """__all__ = ['public_func']
 
 def _unlisted():
     def _helper():
         pass
     _helper()
-'''
+"""
         prev, result = run_hook(tmp_path, src)
         assert 'def helper()' in result
 
@@ -137,14 +137,14 @@ class TestAsyncFunctions:
     """Async nested functions follow the same rules."""
 
     def test_async_nested_in_private_class_stripped(self, tmp_path: Path) -> None:
-        src = '''__all__ = ['Pub']
+        src = """__all__ = ['Pub']
 
 class _Priv:
     async def method(self):
         async def _fetch():
             pass
         await _fetch()
-'''
+"""
         prev, result = run_hook(tmp_path, src)
         assert 'async def fetch()' in result
 
@@ -153,25 +153,25 @@ class TestNoqaProtection:
     """Verify noqa directive suppresses AR044."""
 
     def test_noqa_on_def_line(self, tmp_path: Path) -> None:
-        src = '''__all__ = ['Pub']
+        src = """__all__ = ['Pub']
 
 class _C:
     def m(self):
         def _x():  # noqa
             pass
         _x()
-'''
+"""
         prev, result = run_hook(tmp_path, src)
         assert '_x' in result
 
     def test_noqa_on_call_site(self, tmp_path: Path) -> None:
-        src = '''__all__ = ['p']
+        src = """__all__ = ['p']
 class _C:
     def m(self):
         def _f():
             pass
         _f()  # noqa
-'''
+"""
         prev, result = run_hook(tmp_path, src)
         assert '_f' in result
 
@@ -180,35 +180,35 @@ class TestEdgeCases:
     """Names with certain patterns are exempt."""
 
     def test_dunder_nested_preserved(self, tmp_path: Path) -> None:
-        src = '''__all__ = ['Pub']
+        src = """__all__ = ['Pub']
 class _C:
     def m(self):
         def __dunder():
             pass
 __dunder()
-'''
+"""
         prev, result = run_hook(tmp_path, src)
         assert '__dunder' in result
 
     def test_double_leading_underscore_preserved(self, tmp_path: Path) -> None:
-        src = '''__all__ = ['Pub']
+        src = """__all__ = ['Pub']
 class _C:
     def m(self):
         def __inner():
             pass
 __inner()
-'''
+"""
         prev, result = run_hook(tmp_path, src)
         assert '__inner' in result
 
     def test_trailing_underscore_preserved(self, tmp_path: Path) -> None:
-        src = '''__all__ = ['Pub']
+        src = """__all__ = ['Pub']
 class _C:
     def m(self):
         def cls_():
             pass
 cls_()
-'''
+"""
         prev, result = run_hook(tmp_path, src)
         assert 'cls_' in result
 
@@ -217,25 +217,25 @@ class TestCheckMode:
     """Test AR044 check mode (reports without fixing)."""
 
     def test_violation_reported(self, tmp_path: Path) -> None:
-        src = '''__all__ = ['Pub']
+        src = """__all__ = ['Pub']
 class _C:
     def m(self):
         def _f():
             pass
         _f()
-'''
+"""
         stdout, rc = run_check(tmp_path, src)
         assert rc != 0
         assert 'AR044' in stdout
 
     def test_clean_file_no_violation(self, tmp_path: Path) -> None:
         """No __all__ means no violations since everything is public."""
-        src = '''class C:
+        src = """class C:
     def m(self):
         def _f():
             pass
         _f()
-'''
+"""
         stdout, rc = run_check(tmp_path, src)
         assert rc == 0
 
@@ -246,11 +246,11 @@ class TestStrictSubsetBehavior:
     def test_no_all_keeps_more_underlines_than_ar002(self, tmp_path: Path) -> None:
         """Under no __all__, AR044 keeps underscores while AR002 would strip."""
         # Run with AR004 to get stripping
-        src = '''def outer():
+        src = """def outer():
     def _inner():
         pass
 _inner()
-'''
+"""
         f1 = tmp_path / 'test_ar004.py'
         f1.write_text(src)
         from hooks.agent_reformat import run as run_agent
@@ -260,14 +260,12 @@ _inner()
             run_agent([str(f1), '--rules=AR004', '--fix'])
         except SystemExit:
             pass
-        after_ar004 = f1.read_text()
-
         # Now test AR044
-        src2 = '''def outer():
+        src2 = """def outer():
     def _inner():
         pass
 _inner()
-'''
+"""
         f2 = tmp_path / 'test_ar044.py'
         f2.write_text(src2)
         captured2 = io.StringIO()
