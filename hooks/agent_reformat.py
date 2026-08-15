@@ -138,12 +138,10 @@ def get_nested_func_parent_class(nested_name, nested_lineno, tree, class_is_publ
                         break
             if result:
                 return
-
     for child in getattr(tree, 'body', []):
         visit(child)
         if result:
             break
-
     return result
 
 
@@ -160,7 +158,6 @@ def collect_nested_functions(tree):
         elif isinstance(node, ast.ClassDef):
             for child_node in getattr(node, 'body', []):
                 visit(child_node)
-
     for node in getattr(tree, 'body', []):
         visit(node)
     result.sort(key=lambda x: x[1])
@@ -334,7 +331,6 @@ def strip_underscores(filepath, rules, dry_run=False, show=False):  # noqa: C901
                  NESTED_FUNC_KIND: ('AR004', 'AR044')}
         base, priv = codes[kind]
         return priv if use_new_rules else base
-
     def need_check_export_exposure(kind):
         """Return True if this kind needs export exposure checking."""
         # Methods always need check (need to know their containing class)
@@ -393,24 +389,20 @@ def strip_underscores(filepath, rules, dry_run=False, show=False):  # noqa: C901
         replacements[ident] = ident.lstrip('_')
         violations.append(
             (lineno, get_rule_code(kind, bool(active_new_rules and not active_old_rules))))
-
     # Process nested functions for AR004/AR044
     usages = {}
     for node in ast.walk(tree):
         if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
             usages.setdefault(node.id, []).append(getattr(node, 'lineno', None))
-
     has_ar004 = 'AR004' in set(rules) & {'AR001', 'AR002', 'AR003', 'AR004'}
     has_ar044 = 'AR044' in set(rules) & {'AR041', 'AR042', 'AR043', 'AR044'}
 
     for ident, lineno in nested_defs:
         if not ident.startswith('_') or ident.startswith('__') or ident.endswith('_'):
             continue
-
         # Skip unused nested functions
         if usages.get(ident, 0) == 0:
             continue
-
         # For AR044: only strip when inside a non-exported class (or no parent
         # class with __all__)
         skip_for_ar044 = False
@@ -423,7 +415,6 @@ def strip_underscores(filepath, rules, dry_run=False, show=False):  # noqa: C901
             else:
                 # No __all__ means everything is implicitly public
                 skip_for_ar044 = True
-
         if not skip_for_ar044 and (has_ar004 or has_ar044):
             all_active_underscore_rules = set(rules) & {'AR001', 'AR002', 'AR003', 'AR004',
                                                         'AR041', 'AR042', 'AR043', 'AR044'}
@@ -452,15 +443,18 @@ def fix_blanks(filepath, rules, min_gap=3, dry_run=False, show=False):
     with open(filepath, encoding='utf-8', newline='') as f:
         source = f.read()
     violations_found: list[int] = []
-    # Process blank line rules AR011 and AR012
+    # Process blank line rules AR011 through AR014
     ar011_active = 'AR011' in active_rules
     ar012_active = 'AR012' in active_rules
+    ar013_active = 'AR013' in active_rules
     if ar011_active:
         new_source = fix_blanks_ar011(source)
     else:
         new_source = source
     if ar012_active:
         new_source = fix_blanks_ar012(new_source)
+    if ar013_active:
+        new_source = fix_blanks_ar013(new_source, min_gap=min_gap)
     changed = new_source != source
     if changed and violations_found:
         if show:
@@ -485,12 +479,10 @@ def get_indent_level(line: str) -> int:
 
 def fix_blanks_ar011(source: str) -> str:  # noqa: C901
     """AR011: Remove blank lines before/after indent/outdent transitions.
-
     Removes ALL consecutive blank lines that appear immediately before or after
     an indent (entry to a new block) or outdent (exit from a block) transition
     between consecutive non-blank lines. This cleans up LLM-generated code's
     excessive use of blank lines around block boundaries.
-
     Preserved (not removed):
     - Blanks at module level (indent=0) after outdents from inner blocks,
       since they serve as PEP8-style section separators in the file structure.
@@ -498,7 +490,6 @@ def fix_blanks_ar011(source: str) -> str:  # noqa: C901
     """
     source = source.replace('\r\n', '\n')
     lines = source.split('\n')
-
     if not lines:
         return source
     non_blank_lines: list[tuple[int, int]] = []  # (line_index_in_lines, indent)
@@ -623,6 +614,152 @@ def fix_blanks_ar012(source: str) -> str:  # noqa: C901
         if is_before_comment or is_after_comment:
             to_remove.add(idx)
     new_lines = [ln for i, ln in enumerate(lines) if i not in to_remove]
+    return '\n'.join(new_lines)
+
+
+STMT_TYPES_KW = (
+    ast.Expr, ast.Assign, ast.AnnAssign, ast.AugAssign,
+    ast.AsyncFor, ast.AsyncWith, ast.For, ast.While,
+    ast.With, ast.If, ast.Try, ast.Assert, ast.Return,
+    ast.Break, ast.Continue, ast.Raise, ast.Import,
+    ast.ImportFrom, ast.Delete, ast.Global, ast.Nonlocal,
+    ast.ExceptHandler,
+)
+
+
+def find_string_lines(source):
+    """Find 0-based line indices inside STRING tokens."""
+    out = set()
+    try:
+        for tok in tokenize.generate_tokens(
+            io.StringIO(source).readline,
+        ):
+            if tok.type == tokenize.STRING:
+                for ln in range(tok.start[0], tok.end[0] + 1):
+                    out.add(ln - 1)
+    except (tokenize.TokenError, ValueError):
+        pass
+    return out
+
+
+def collect_stmt_starts(source, lines, string_lines):
+    """Walk AST and collect (line0, indent) for statement nodes."""
+    tree = ast.parse(source)
+    out: list[tuple[int, int]] = []
+
+    def visit(node):
+        if isinstance(node, STMT_TYPES_KW):
+            ln = getattr(node, 'lineno', None)
+            if ln is not None:
+                ln0 = ln - 1
+                skip = any(
+                    ln0 + off in string_lines
+                    for off in range(max(0, ln0 - 2),
+                                     min(len(lines), ln0 + 3))
+                )
+                if not skip:
+                    out.append((ln0, get_indent_level(lines[ln0])))
+        for child in getattr(node, '_fields', ()):
+            val = getattr(node, child, None)
+            if isinstance(val, ast.AST):
+                visit(val)
+            elif isinstance(val, list):
+                for item in val:
+                    if isinstance(item, ast.AST):
+                        visit(item)
+    visit(tree)
+    return out
+
+
+def find_protected_blanks(source, tree):
+    """Find blank line indices that must be preserved."""
+    lines = source.split('\n')
+    protected: set[int] = set()
+
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef,
+                                 ast.AsyncFunctionDef,
+                                 ast.ClassDef)):
+            continue
+        end_ln = getattr(node, 'end_lineno', None)
+        if end_ln is None:
+            continue
+        end_0 = end_ln - 1
+        for blank_i in range(end_0 + 1, len(lines)):
+            if lines[blank_i].strip():
+                break
+            protected.add(blank_i)
+    last_idx: int | None = None
+    for idx in range(len(lines) - 1, -1, -1):
+        if lines[idx].strip():
+            last_idx = idx
+            break
+    if last_idx is not None:
+        for i in range(last_idx + 1, len(lines)):
+            protected.add(i)
+    return protected
+
+
+def group_same_indent(stmts, lines):
+    """Group consecutive same-indent (line0, indent) pairs."""
+    groups: list[list[tuple[int, int]]] = []
+    cur: list[tuple[int, int]] = []
+    for entry in stmts:
+        line0, indent = entry
+        if not cur or indent != cur[-1][1]:
+            if cur:
+                groups.append(cur)
+            cur = [(line0, indent)]
+        else:
+            cur.append((line0, indent))
+    if cur:
+        groups.append(cur)
+    return groups
+
+
+def remove_empty_for_short_groups(groups_by_indent, min_gap, lines, protected):
+    """Return blank line indices to remove for short statement groups."""
+    to_remove: set[int] = set()
+    for grp_entries in groups_by_indent:
+        if len(grp_entries) >= min_gap:
+            continue
+        for si in range(len(grp_entries) - 1):
+            line_a, _ = grp_entries[si]
+            line_b, _ = grp_entries[si + 1]
+            for blank_idx in range(line_a + 1, line_b):
+                if (lines[blank_idx].strip() == '' and
+                        blank_idx not in protected):
+                    to_remove.add(blank_idx)
+    return to_remove
+
+
+def fix_blanks_ar013(source, min_gap=3):
+    """AR013: Remove blank lines when < min_gap statements at same indent.
+
+    Blanks preserved: end-of-file; between def/class blocks;
+    inside multi-line strings.
+    """
+    source = source.replace('\r\n', '\n')
+    lines = source.split('\n')
+    if len(lines) <= 1:
+        return source
+    string_lines = find_string_lines(source)
+    tree = ast.parse(source)
+    stmts_raw = collect_stmt_starts(source, lines, string_lines)
+    deduped: list[tuple[int, int]] = sorted(
+        set(stmts_raw), key=lambda e: e[0],
+    )
+    if len(deduped) < 2:
+        return source
+    protected = find_protected_blanks(source, tree)
+    groups_by_indent = group_same_indent(deduped, lines)
+    to_remove = remove_empty_for_short_groups(
+        groups_by_indent, min_gap, lines, protected,
+    )
+
+    new_lines = [
+        ln for idx, ln in enumerate(lines) if idx not in to_remove
+    ]
     return '\n'.join(new_lines)
 
 
