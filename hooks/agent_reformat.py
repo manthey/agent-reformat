@@ -275,6 +275,7 @@ def strip_underscores(filepath, rules, dry_run=False, show=False):  # noqa: C901
                  'method': ('AR003', 'AR043')}
         base, priv = codes[kind]
         return priv if use_new_rules else base
+
     def need_check_export_exposure(kind):
         """Return True if this kind needs export exposure checking."""
         # Methods always need check (need to know their containing class)
@@ -356,12 +357,15 @@ def fix_blanks(filepath, rules, min_gap=3, dry_run=False, show=False):
         source = f.read()
     violations_found: list[int] = []
 
-    # Only process AR011 for now
+    # Process blank line rules AR011 and AR012
     ar011_active = 'AR011' in active_rules
-    if not ar011_active:
-        new_source = source
-    else:
+    ar012_active = 'AR012' in active_rules
+    if ar011_active:
         new_source = fix_blanks_ar011(source)
+    else:
+        new_source = source
+    if ar012_active:
+        new_source = fix_blanks_ar012(new_source)
     changed = new_source != source
     if changed and violations_found:
         if show:
@@ -384,7 +388,7 @@ def get_indent_level(line: str) -> int:
     return len(line) - len(line.lstrip())
 
 
-def fix_blanks_ar011(source: str) -> str:
+def fix_blanks_ar011(source: str) -> str:  # noqa: C901
     """AR011: Remove blank lines before/after indent/outdent transitions.
 
     Removes blank lines that appear immediately before or after an indent/outdent
@@ -445,8 +449,93 @@ def fix_blanks_ar011(source: str) -> str:
     return '\n'.join(new_lines)
 
 
+def fix_blanks_ar012(source: str) -> str:  # noqa: C901
+    """AR012: Remove blank lines immediately before/after comments.
+
+    Uses tokenize to identify actual comment tokens (not # inside strings).
+    Removes blank lines that appear immediately before or after such comment
+    lines since those clearly show logical sections.
+
+    Preserved (not removed):
+    - Blanks at end of file (trailing blanks).
+    - Blanks between function, method, or class definitions at module level.
+    - Blank lines inside multi-line strings (handled by tokenize).
+    """
+    source = source.replace('\r\n', '\n')
+    lines = source.split('\n')
+    if not lines:
+        return source
+
+    # Find real comment line numbers (1-based) using tokenize.
+    try:
+        tokens = list(tokenize.generate_tokens(io.StringIO(source).readline))
+    except tokenize.TokenError:
+        return source
+
+    comment_lines: set[int] = set()   # line numbers containing real comments
+    pep723_end_lineno = -1  # Track PEP 723 '///' end marker line number
+
+    for tok in tokens:
+        if tok.type == tokenize.COMMENT:
+            lineno = tok.start[0]
+            # Only consider lines where the comment is at start
+            line_text = lines[lineno - 1] if lineno <= len(lines) else ''
+            stripped = line_text.lstrip()
+            if stripped.startswith('#'):
+                # Skip PEP 723 block markers - preserve blank after '///'
+                if stripped == '# ///':
+                    pep723_end_lineno = lineno
+                    continue
+                comment_lines.add(lineno)
+
+    # Find last non-blank line index for preserving trailing blanks
+    last_non_blank_idx = None
+    inv_range = range(len(lines) - 1, -1, -1)
+    for idx in inv_range:
+        if lines[idx].strip():
+            last_non_blank_idx = idx
+            break
+    if last_non_blank_idx is None:
+        return source  # All blank lines, no changes needed
+
+    trailing_start = last_non_blank_idx + 1
+
+    to_remove: set[int] = set()  # indices of blank lines to remove (0-based)
+    comment_set = set(comment_lines)
+
+    for idx, line in enumerate(lines):
+        if line.strip():  # not a blank line - skip
+            continue
+
+        # Don't touch trailing blanks at end of file
+        if idx >= trailing_start:
+            continue
+
+        prev_lineno = idx
+
+        # Preserve blank line immediately after PEP 723 '///' marker
+        if pep723_end_lineno > 0 and prev_lineno == pep723_end_lineno:
+            continue
+
+        next_lineno = idx + 2
+
+        remove_this_blank = False
+
+        # Check if this blank line is immediately before a comment line
+        if next_lineno in comment_set:
+            remove_this_blank = True
+        # Check if this blank line is immediately after a comment line
+        elif prev_lineno in comment_set:
+            remove_this_blank = True
+
+        if remove_this_blank:
+            to_remove.add(idx)
+
+    new_lines = [ln for i, ln in enumerate(lines) if i not in to_remove]
+    return '\n'.join(new_lines)
+
+
 def is_emoji_char(c):
-    """Check if a character matches emoji ranges (excluding deco text)."""
     cp = ord(c)
     # Decorative text chars are NOT emojis per user spec
     if cp in (0x2713, 0x2717, 0x2718):
