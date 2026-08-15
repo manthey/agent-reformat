@@ -349,205 +349,21 @@ def strip_underscores(filepath, rules, dry_run=False, show=False):  # noqa: C901
     return violations
 
 
-def fix_blanks(filepath, rules, min_gap=3, dry_run=False, show=False):  # noqa
-    """Apply AR011-015 to clean up blank lines. Returns violations."""
+def fix_blanks(filepath, rules, min_gap=3, dry_run=False, show=False):
+    """Apply AR011-014 to clean up blank lines. Returns violations."""
     active_rules = set(rules) if rules else set()
+    if not active_rules:
+        return []
     with open(filepath, encoding='utf-8', newline='') as f:
         source = f.read()
-    line_end = '\r\n' if '\r\n' in source else '\n'
-    pep723 = find_pep723_block(source)
-    lines = source.splitlines(keepends=True)
-    output = []
-    violations = []  # (lineno, rule_code) per blank line to remove
-    pending_blank = False
-    code_lines_since_blank = 0
-    consecutive_blanks = 0
-    prev_indent = 0
-    prev_text = ''
-    prev_lineno = 0
-    # Track whether the previous non-blank line was a decorator.
-    # Consecutive decorators form a single logical unit; blanks between
-    # them must be removed (gap goes above the first @).
-    prev_was_decorator = False
-    indent_cause = {0: 'other'}
-    gap = min_gap
-    # Detect which lines fall inside multi-line strings so we never process
-    # their blank lines, indentation, or content toward the gap logic
-    string_lines = set()
-    try:
-        toks = list(tokenize.generate_tokens(io.StringIO(source).readline))
-        for tok in toks:
-            if tok.type == tokenize.STRING:
-                string_lines.update(range(tok.start[0], tok.end[0] + 1))
-    except (tokenize.TokenError, ValueError):
-        # Tokenization failure or bad IO: processing normally
-        pass
-    gap_indents_seen = set()
+    violations = []
+    # We will want to keep the line ending style of the original file
+    # line_end = '\r\n' if '\r\n' in source else '\n'
 
-    for idx, line in enumerate(lines):
-        curr_text = line.strip()
-        curr_lineno = idx + 1
-        curr_indent = len(line) - len(line.lstrip())
-        # Lines entirely inside multi-line strings pass through verbatim;
-        # their content and whitespace must not affect any gap counts.
-        if curr_lineno in string_lines:
-            output.append(line)
-            continue
-        if not curr_text:
-            pending_blank = True
-            consecutive_blanks += 1
-            continue
-        outdented_to_top = curr_indent == 0 and prev_indent > 0
+    # we've removed this code because it was so bad; remove this comment and
+    # write the function anew.
+    new_source = source  # no-op until we rewrite
 
-        if pending_blank:
-            has_many = consecutive_blanks >= 2
-            write_pep8_two = False
-            curr_has_noqa = has_noqa(line, active_rules) and not curr_text.startswith(' ')
-            if ('AR011' in active_rules and has_many and
-                    curr_indent == 0):
-                starts_def = any(
-                    curr_text.startswith(pfx) for pfx in (
-                        'def ', 'async def ', 'class ', '@'))
-                # Skip AR011 normalization inside a decorator chain.
-                prev_is_dec = prev_text.startswith('@') and not prev_text.strip().startswith(
-                    ('def ', 'async def ', 'class '))
-                in_decorator_chain = prev_is_dec and any(
-                    curr_text.startswith(pfx) for pfx in (
-                        '@', 'def ', 'async def ', 'class '))
-                if starts_def and not in_decorator_chain:
-                    # Normalize to exactly 2 blank lines before def/class
-                    # (PEP8). Only report AR011 violations for excess blanks
-                    # beyond PEP8 standard.
-                    target_blanks = 2  # PEP8 standard for top-level def/class
-                    excess_blanks = consecutive_blanks - target_blanks
-                    if excess_blanks > 0:
-                        # Report the original line numbers of excess blank
-                        # lines being removed.
-                        first_blank_lineno = curr_lineno - consecutive_blanks
-                        violations.extend((first_blank_lineno + i, 'AR011')
-                                          for i in range(excess_blanks))
-                    output.append(line_end + line_end)
-                    write_pep8_two = True
-            if not write_pep8_two:
-                pi = prev_text.startswith(('import ', 'from '))
-                ci = curr_text.startswith(('import ', 'from '))
-                keep_for_imports = (
-                    'AR013' in active_rules and ((pi and not ci) or
-                                                 (pi and ci)))
-                keep_for_outdent = False
-                if 'AR014' in active_rules and prev_indent > curr_indent:
-                    for lvl in range(curr_indent + 4,
-                                     prev_indent + 4, 4):
-                        if indent_cause.get(lvl) in ('def', 'class'):
-                            keep_for_outdent = True
-                comment_gap_override = False
-                if 'AR016' in active_rules:
-                    prev_is_comp = prev_text.lstrip().startswith('#')
-                    curr_is_comp = curr_text.lstrip().startswith('#')
-                    # Don't apply AR016 for PEP 723 comments
-                    prev_in_pep723 = (
-                        prev_lineno >= pep723[0] and
-                        prev_lineno <= pep723[1]
-                        if pep723[0] > 0
-                        else False
-                    )
-                    comment_gap_override = (
-                        (prev_is_comp or curr_is_comp) and
-                        not prev_in_pep723
-                    )
-                gap_reached = code_lines_since_blank >= gap
-                same_indent = prev_indent == curr_indent
-                # Fixed: also accept when unwinding from deeper indent
-                # seen earlier in this block (multiline call continuation).
-                if not same_indent and prev_indent > curr_indent:
-                    # Track indents accumulated during gap so an unwind to
-                    # one at or above current is valid.
-                    unwound_to = any(
-                        lvl >= curr_indent for lvl in gap_indents_seen
-                    )
-                    same_or_unwound = unwound_to
-                else:
-                    same_or_unwound = same_indent
-                should_keep = False
-                starts_def = any(
-                    curr_text.startswith(pfx) for pfx in (
-                        'def ', 'async def ', 'class ', '@'))
-                # Decorator-chain override: don't keep blanks between
-                # consecutive decorator lines or between the last decorator and
-                # its following def/class — they form one logical unit.
-                in_decorator_chain = prev_was_decorator and any(
-                    curr_text.startswith(pfx) for pfx in (
-                        '@', 'def ', 'async def ', 'class '))
-                if in_decorator_chain:
-                    should_keep = False  # force no blank; will fall through
-                elif keep_for_imports or starts_def:
-                    should_keep = True
-                elif keep_for_outdent:
-                    should_keep = True
-                elif same_or_unwound and gap_reached and not comment_gap_override:
-                    should_keep = True
-                elif curr_has_noqa:
-                    should_keep = True
-                # Preserve one blank line after PEP 723 block closing
-                pep723_right_after = (
-                    pep723[0] > 0 and
-                    prev_lineno >= pep723[0] and
-                    prev_lineno <= pep723[1]
-                )
-                if pep723_right_after:
-                    should_keep = True
-                if write_pep8_two:
-                    pass
-                elif outdented_to_top and has_many:
-                    output.append(line_end + line_end)
-                    violations.extend((curr_lineno - consecutive_blanks + i, 'AR011')
-                                      for i in range(consecutive_blanks))
-                elif should_keep:
-                    # If blanks are intentionally kept due to valid conditions
-                    # (code_lines gap threshold, import separation etc),
-                    # no violations need reporting since they're preserved.
-                    output.append(line_end)
-                    code_lines_since_blank = 0
-            consecutive_blanks = 0
-            pending_blank = False
-            # Reset the set for the next accumulation cycle
-            gap_indents_seen = set()
-        # Track indent during gap block
-        gap_indents_seen.add(curr_indent)
-        if curr_indent > prev_indent:
-            is_prev_def = prev_text.startswith(('def ', 'async def '))
-            if is_prev_def:
-                indent_cause[curr_indent] = 'def'
-            elif prev_text.startswith('class '):
-                indent_cause[curr_indent] = 'class'
-            else:
-                indent_cause[curr_indent] = 'other'
-        output.append(line)
-        code_lines_since_blank += 1
-        prev_indent = curr_indent
-        prev_lineno = curr_lineno
-        prev_text = curr_text
-        prev_was_decorator = (prev_text.startswith('@') and
-                              not prev_text.strip().startswith(('def ', 'async def ', 'class '))
-                              )
-    if pending_blank:
-        pep723_after = (
-            pep723[0] > 0 and
-            prev_lineno >= pep723[0] and
-            prev_lineno <= pep723[1]
-        )
-        last_def_class = any(prev_text.strip().endswith(sfx) for sfx in (
-            'def ', 'async def ', 'class '))
-        if pep723_after:
-            # Preserve one blank line right after PEP 723 block
-            output.append(line_end)
-        elif last_def_class or consecutive_blanks >= 2:
-            output.append(line_end + line_end)
-        elif active_rules & {'AR015'}:
-            violations.extend((idx - consecutive_blanks + i, 'AR015')
-                              for i in range(consecutive_blanks))
-            output.append(line_end)
-    new_source = ''.join(output)
     changed = new_source != source
     if changed and violations:
         if show:

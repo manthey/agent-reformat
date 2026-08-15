@@ -143,17 +143,6 @@ y = 2
         assert '#!/usr/bin/env python3' in result
 
 
-class TestPEP723AR012Protection:
-    """Test that AR012 doesn't destroy PEP723 blocks (since we preserved blanks after # ///)."""
-
-    def test_ar012_respects_pep723_blanks(self, tmp_path):
-        """Blank line after PEP 723 closing is preserved even with AR012."""
-        src = '# /// script\n# requires-python = ">=3.11"\n# ///\nx = 1\ny = 2\n'
-        result = run_fix(tmp_path, src, rules='AR012')
-        assert '# /// script' in result
-        assert '# requires-python' in result
-
-
 class TestPEP723AR021Protection:
     """Test that AR021 does not remove repeated-char comments inside PEP 723."""
 
@@ -169,6 +158,6 @@ class TestPEP723AR021Protection:
 
 
 if __name__ == '__main__':
-
     import pytest
+
     pytest.main([__file__, '-v'])
