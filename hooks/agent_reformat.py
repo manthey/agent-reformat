@@ -638,7 +638,7 @@ def strip_emojis(filepath, rules, dry_run=False, show=False):
 
 
 def strip_repeated_comments(filepath, rules=frozenset(), dry_run=False, show=False):
-    """AR021: Remove lines with cluttered repeated-char comments. Returns line nums."""
+    """AR021: Remove lines with repeated-char comments. Returns line nums."""
     file_path = Path(filepath)
     with open(file_path, encoding='utf-8', newline='') as f:
         source = f.read()
@@ -659,15 +659,15 @@ def strip_repeated_comments(filepath, rules=frozenset(), dry_run=False, show=Fal
                 continue
             lines = source.split('\n')
             line_text = lines[lineno - 1]
-            # Check for "" directive (skip if present)
             if has_noqa(line_text, rules):
                 seen_lines.add(lineno)
                 continue
             # Extract the comment content based on token position
             start_col = tok.start[1] + 1  # +1 for the '#' itself
             comment_part = line_text[start_col - 1:]
-            # Check for repetition of ANY non-whitespace character
-            if re.search(r'(\S)\1{3,}', comment_part):
+            # Check for repetition of ANY non-whitespace character that isn't
+            # a hexadecimal digit
+            if re.search(r'([^ \t\r\n\f\v0-9a-fA-F])\1{3,}', comment_part):
                 # Skip comments within PEP 723 block
                 if pep723[0] > 0 and pep723[0] <= lineno <= pep723[1]:
                     seen_lines.add(lineno)

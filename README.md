@@ -27,7 +27,7 @@ The hook exposes individual rule codes for granular control. You can activate sp
 | `AR012` | Blank lines  | Remove blank lines immediately adjacent to comments.                        |
 | `AR013` | Blank lines  | Remove blank lines when consecutive statements at same indent are fewer than min_gap. |
 | `AR014` | Blank lines  | Remove blank lines between decorators and their target function/class definition. |
-| `AR021` | Comments     | Remove comment-only lines repeating 4+ identical non-whitespace chars.      |
+| `AR021` | Comments     | Remove comment-only lines repeating 4+ identical non-whitespace, non-hexadecimal digit characters. |
 | `AR022` | Comments     | Enforce max line length on **comment-only** lines (error only, no auto-fix). Lines exceeding the configured maximum must be manually rewrapped by users or agents into shorter multi-line comments or shortened entirely.          |
 | `AR031` | Emojis       | Remove emoji characters.                                                    |
 | `AR032` | Emojis       | Replace decorative text with plain versions.                                |
