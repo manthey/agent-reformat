@@ -46,6 +46,25 @@ class TestAR012BasicCommentRemoval:
         _, after = run_fix(tmp_path, src)
         assert after == 'x = 1\n# Comment\ny = 2\n'
 
+    def test_multiple_consecutive_blanks_before_comment_removed(self, tmp_path: Path) -> None:
+        """AR012 FIX: All consecutive blanks before a comment should be removed.
+
+        The previous implementation only removed the blank directly adjacent to
+        the comment line. Now ALL consecutive blanks touching the comment
+        boundaries are removed.
+        """
+        src = 'x = 1\n\n\n# Comment with multiple blanks\ny = 2\n'
+        _, after = run_fix(tmp_path, src)
+        # All three blanks before the comment should be removed
+        assert after == 'x = 1\n# Comment with multiple blanks\ny = 2\n'
+
+    def test_multiple_consecutive_blanks_after_comment_removed(self, tmp_path: Path) -> None:
+        """AR012 FIX: All consecutive blanks after a comment should be removed."""
+        src = 'x = 1\n# Comment with multiple blanks\n\n\ny = 2\n'
+        _, after = run_fix(tmp_path, src)
+        # All three blanks after the comment should be removed
+        assert after == 'x = 1\n# Comment with multiple blanks\ny = 2\n'
+
     def test_multiple_standalone_comments(self, tmp_path: Path) -> None:
         """Multiple standalone comments should each have blanks removed."""
         src = 'a = 1\n\n# First section\n\nb = 2\n\n# Second section\n\nc = 3\n'
@@ -106,15 +125,25 @@ class TestAR012ComplexScenarios:
         assert 'x = 1  # inline\n\ny = 2' in after
 
     def test_comment_in_multiline_string_preserved(self, tmp_path: Path) -> None:
-        """Comments inside multiline strings should not trigger AR012."""
+        """Comments inside multiline strings should not trigger AR012.
+
+        Verify that blanks are preserved when there's content in a multiline
+        string that LOOKS like comments but isn't (confirmed by tokenizer).
+        This tests that AR012 correctly only acts on real comments, not # chars
+        inside strings.
+        """
+        # Note: There MUST be an actual blank line after the inner content
+        # to demonstrate preservation. The '#' comment is INSIDE the string.
         src = '''x = """
 # Not a real comment
+
 """
+
 y = 1
 '''
         _, after = run_fix(tmp_path, src)
-        # The '# Not' inside the string is NOT a real comment, so blank
-        # preserved
+        # The blank between closing """ and y=1 should be preserved because
+        # the '#' inside the string is NOT a real comment
         assert '\n\ny = 1' in after
 
 

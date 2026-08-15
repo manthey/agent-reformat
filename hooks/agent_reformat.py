@@ -356,7 +356,6 @@ def fix_blanks(filepath, rules, min_gap=3, dry_run=False, show=False):
     with open(filepath, encoding='utf-8', newline='') as f:
         source = f.read()
     violations_found: list[int] = []
-
     # Process blank line rules AR011 and AR012
     ar011_active = 'AR011' in active_rules
     ar012_active = 'AR012' in active_rules
@@ -391,9 +390,10 @@ def get_indent_level(line: str) -> int:
 def fix_blanks_ar011(source: str) -> str:  # noqa: C901
     """AR011: Remove blank lines before/after indent/outdent transitions.
 
-    Removes blank lines that appear immediately before or after an indent/outdent
-    transition between consecutive non-blank lines. This cleans up LLM-generated
-    code's excessive use of blank lines around block boundaries.
+    Removes ALL consecutive blank lines that appear immediately before or after
+    an indent (entry to a new block) or outdent (exit from a block) transition
+    between consecutive non-blank lines. This cleans up LLM-generated code's
+    excessive use of blank lines around block boundaries.
 
     Preserved (not removed):
     - Blanks at module level (indent=0) after outdents from inner blocks,
@@ -418,30 +418,24 @@ def fix_blanks_ar011(source: str) -> str:  # noqa: C901
 
         prev_nbl = non_blank_lines[nbl_idx - 1] if nbl_idx > 0 else None
         next_nbl = non_blank_lines[nbl_idx + 1] if nbl_idx + 1 < len(non_blank_lines) else None
+
         if prev_nbl is not None:
             prev_lin, prev_indent = prev_nbl
+            # INDENT ENTRY: blank lines before entering a new block
             if cur_indent > prev_indent:
-                # Check if this transition creates/enters a new block.
-                cur_text = lines[cur_lin].strip()
-                _block_keywords = ('def ', 'class ')
-                _is_block = any(cur_text.startswith(kw) for kw in _block_keywords)
-
                 for b in range(prev_lin + 1, cur_lin):
                     if not lines[b].strip():
-                        # Preserve blanks around def/class block
-                        # definitions (PEP8 section separators).
-                        if _is_block:
-                            continue  # keep this blank
                         to_remove.add(b)
         if next_nbl is not None:
             next_lin, next_indent = next_nbl
-            if cur_indent > next_indent:
+            # OUTDENT EXIT: blank lines after exiting a block
+            # Only remove if we're NOT at module level (indent=0 preserves
+            # section separators)
+            if cur_indent > next_indent and next_indent != 0:
                 for b in range(cur_lin + 1, next_lin):
                     if not lines[b].strip():
-                        # Keep blanks at module level (PEP8 section sep).
-                        if next_indent == 0:
-                            continue  # keep this blank
                         to_remove.add(b)
+    # Preserve trailing blanks (after the last non-blank line)
     last_nbl_lin = non_blank_lines[-1][0] if non_blank_lines else -1
     for i in range(len(lines) - 1, last_nbl_lin, -1):
         to_remove.discard(i)
@@ -450,11 +444,11 @@ def fix_blanks_ar011(source: str) -> str:  # noqa: C901
 
 
 def fix_blanks_ar012(source: str) -> str:  # noqa: C901
-    """AR012: Remove blank lines immediately before/after comments.
+    """AR012: Remove ALL blank lines immediately before/after comments.
 
     Uses tokenize to identify actual comment tokens (not # inside strings).
-    Removes blank lines that appear immediately before or after such comment
-    lines since those clearly show logical sections.
+    Removes ALL consecutive blank lines that appear immediately before or after
+    comment lines, since those clearly show logical sections being separated.
 
     Preserved (not removed):
     - Blanks at end of file (trailing blanks).
@@ -465,15 +459,13 @@ def fix_blanks_ar012(source: str) -> str:  # noqa: C901
     lines = source.split('\n')
     if not lines:
         return source
-
     # Find real comment line numbers (1-based) using tokenize.
     try:
         tokens = list(tokenize.generate_tokens(io.StringIO(source).readline))
     except tokenize.TokenError:
         return source
-
-    comment_lines: set[int] = set()   # line numbers containing real comments
-    pep723_end_lineno = -1  # Track PEP 723 '///' end marker line number
+    comment_lines: set[int] = set()   # 1-based line numbers containing real comments
+    pep723_end_lineno = -1            # Track PEP 723 '///' end marker line number
 
     for tok in tokens:
         if tok.type == tokenize.COMMENT:
@@ -487,7 +479,6 @@ def fix_blanks_ar012(source: str) -> str:  # noqa: C901
                     pep723_end_lineno = lineno
                     continue
                 comment_lines.add(lineno)
-
     # Find last non-blank line index for preserving trailing blanks
     last_non_blank_idx = None
     inv_range = range(len(lines) - 1, -1, -1)
@@ -497,40 +488,43 @@ def fix_blanks_ar012(source: str) -> str:  # noqa: C901
             break
     if last_non_blank_idx is None:
         return source  # All blank lines, no changes needed
+    trailing_start = last_non_blank_idx + 2  # 1-based: line after last content + 1
 
-    trailing_start = last_non_blank_idx + 1
-
-    to_remove: set[int] = set()  # indices of blank lines to remove (0-based)
-    comment_set = set(comment_lines)
+    to_remove: set[int] = set()  # indices (0-based) of blank lines to remove
 
     for idx, line in enumerate(lines):
         if line.strip():  # not a blank line - skip
             continue
-
         # Don't touch trailing blanks at end of file
-        if idx >= trailing_start:
+        # Convert to 1-based for consistency with comment_lines which is 1-based
+        blank_line_num = idx + 1  # 1-based line number of this blank line
+        if blank_line_num >= trailing_start:
             continue
-
-        prev_lineno = idx
-
         # Preserve blank line immediately after PEP 723 '///' marker
-        if pep723_end_lineno > 0 and prev_lineno == pep723_end_lineno:
+        if pep723_end_lineno > 0 and idx == pep723_end_lineno - 1:  # convert back
             continue
+        # Check if this blank line is IMMEDIATELY before a comment (next
+        # non-blank is a comment) OR immediately after a comment (prev
+        # non-blank was a comment)
+        # We check ALL consecutive blanks that touch the boundary by looking at
+        # the nearest content on either side
+        # Look backward for preceding non-blank line number
+        prev_content_line = None
+        for p in range(idx - 1, -1, -1):
+            if lines[p].strip():
+                prev_content_line = p + 1  # 1-based
+                break
+        # Look forward for following non-blank line number
+        next_content_line = None
+        for n in range(idx + 1, len(lines)):
+            if lines[n].strip():
+                next_content_line = n + 1  # 1-based
+                break
+        is_before_comment = (next_content_line and next_content_line in comment_lines)
+        is_after_comment = (prev_content_line and prev_content_line in comment_lines)
 
-        next_lineno = idx + 2
-
-        remove_this_blank = False
-
-        # Check if this blank line is immediately before a comment line
-        if next_lineno in comment_set:
-            remove_this_blank = True
-        # Check if this blank line is immediately after a comment line
-        elif prev_lineno in comment_set:
-            remove_this_blank = True
-
-        if remove_this_blank:
+        if is_before_comment or is_after_comment:
             to_remove.add(idx)
-
     new_lines = [ln for i, ln in enumerate(lines) if i not in to_remove]
     return '\n'.join(new_lines)
 
@@ -812,8 +806,8 @@ def run(cli_args=None):
             continue
         changed = changed or process_file(
             args, filepath, effective_rules, und_codes_all, und_private_codes_all,
-            blk_codes_all,
-            cmt_rules_active, emj_codes_all, gap, comment_len)
+            blk_codes_all, cmt_rules_active, emj_codes_all,
+            gap=gap, comment_len=comment_len)
     sys.exit(1 if changed else 0)
 
 

@@ -95,6 +95,17 @@ class TestAR011IndentBoundaries:
         _, after = run_fix(tmp_path, src)
         assert after == 'class Foo:\n    pass\n'
 
+    def test_multiple_consecutive_blanks_before_body_removed(self, tmp_path: Path) -> None:
+        """AR011 FIX: All consecutive blanks before an indented body should be removed.
+
+        The previous implementation may only remove one blank. Now ALL consecutive
+        blanks at indent entry transitions are properly removed.
+        """
+        src = 'def foo():\n\n\n\n    x = 1\n'
+        _, after = run_fix(tmp_path, src)
+        # All four blanks before the indented body should be removed
+        assert after == 'def foo():\n    x = 1\n'
+
     def test_nested_indent_blank_removed(self, tmp_path: Path) -> None:
         """Blank lines before nested indents are also removed."""
         src = """if True:

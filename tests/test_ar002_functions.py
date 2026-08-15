@@ -47,9 +47,8 @@ def run_check(tmp_path: Path, src: str) -> tuple[str, int]:
     finally:
         sys.stdout = original_stdout
     return captured.getvalue(), rc
-
-
 # === Fix Mode ===
+
 
 class TestAR002FixMode:
     """In fix mode, AR002 strips underscore from top-level functions."""
@@ -76,9 +75,8 @@ class TestAR002FixMode:
         src = 'def helper():\n\n    pass\n'
         _, after, _ = run_hook(tmp_path, src)
         assert 'helper()' in after
-
-
 # === Check Mode (non-fix) ===
+
 
 class TestAR002CheckMode:
     """In check mode, AR002 reports violations without modifying files."""
@@ -91,9 +89,8 @@ class TestAR002CheckMode:
     def test_clean_file_no_violation(self, tmp_path: Path) -> None:
         stdout, rc = run_check(tmp_path, 'def x():\n\n    pass\nx()\n')
         assert rc == 0
-
-
 # === Noqa Protection ===
+
 
 class TestAR002NoqaProtection:
     """Verify noqa directives suppress AR002 stripping."""
@@ -106,9 +103,8 @@ class TestAR002NoqaProtection:
     def test_noqa_on_def_line(self, tmp_path: Path) -> None:
         """Noqa on the definition line protects."""
         run_check(tmp_path, '# noqa\n_x()\n')
-
-
 # === Edge Cases ===
+
 
 class TestAR002EdgeCases:
     """Names matching exclusion patterns must NOT be stripped."""
@@ -130,9 +126,8 @@ class TestAR002EdgeCases:
         src = 'def cls_():\n\n    pass\ncls_()\n'
         _, after, _ = run_hook(tmp_path, src)
         assert 'cls_' in after
-
-
 # === Async Functions ===
+
 
 class TestAR002AsyncFunctions:
     """Top-level async functions should follow the same AR002 rules."""

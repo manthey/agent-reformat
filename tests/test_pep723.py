@@ -59,7 +59,6 @@ def run_fix(tmp_path: Path, src: str, rules=None) -> str:
     cmd_args = [str(f), '--fix']
     if rules:
         cmd_args.extend(['--rules', rules])
-
     orig_stdout = sys.stdout
     captured = io.StringIO()
     try:

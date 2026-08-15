@@ -47,9 +47,8 @@ def run_check(tmp_path: Path, src: str) -> tuple[str, int]:
     finally:
         sys.stdout = original_stdout
     return captured.getvalue(), rc
-
-
 # === Fix Mode ===
+
 
 class TestAR003FixMode:
     """In fix mode AR003 strips underscore from class methods using a bare call."""
@@ -94,9 +93,8 @@ class TestAR003FixMode:
         )
         _, after, rc = run_fix(tmp_path, src)
         assert 'def helper()' in after
-
-
 # === Check Mode (non-fix) ===
+
 
 class TestAR003CheckMode:
     """In check mode AR003 reports violations without modifying files."""
@@ -127,9 +125,8 @@ class TestAR003CheckMode:
         )
         stdout, rc = run_check(tmp_path, src)
         assert rc == 0
-
-
 # === Noqa Protection ===
+
 
 class TestAR003NoqaProtection:
     """Verify noqa directives suppress AR003 stripping."""
@@ -160,9 +157,8 @@ class TestAR003NoqaProtection:
         )
         _, after, rc = run_fix(tmp_path, src)
         assert '_helper' in after
-
-
 # === Edge Cases ===
+
 
 class TestAR003EdgeCases:
     """Names matching exclusion patterns must NOT be stripped."""
@@ -205,9 +201,8 @@ class TestAR003EdgeCases:
         )
         _, after, rc = run_fix(tmp_path, src)
         assert 'cls_' in after
-
-
 # === Async Methods ===
+
 
 class TestAR003AsyncMethods:
     """Async methods in classes should follow the same AR003 rules."""
