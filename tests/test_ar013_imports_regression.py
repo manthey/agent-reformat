@@ -27,7 +27,7 @@ def run_fix(tmp_path: Path, source_code: str) -> tuple[str, str]:
 
 class TestAR013ImportsRegression:
     """Test that AR013 preserves blank lines between import statements.
-    
+
     These are regression tests for the bug where AR013 incorrectly removed
     blank lines between consecutive imports (e.g., inside a function),
     when there were fewer than min_gap statements at the same indent.
@@ -37,9 +37,9 @@ class TestAR013ImportsRegression:
         """Two consecutive imports in a function should preserve their blank."""
         src = """def foo():
     import os
-    
+
     import sys
-    
+
 
 x = 1
 """
@@ -52,7 +52,7 @@ x = 1
             if 'import os' in line:
                 # Next non-empty line should be import sys (or blank then import sys)
                 next_content = None
-                for j in range(i+1, len(lines)):
+                for j in range(i + 1, len(lines)):
                     if lines[j].strip():
                         next_content = lines[j]
                         break
@@ -62,11 +62,11 @@ x = 1
         """Multiple consecutive imports should preserve their blanks."""
         src = """def foo():
     import os
-    
+
     import sys
-    
+
     import re
-    
+
 
 x = 1
 """
@@ -88,9 +88,9 @@ import sys
         """from...import statements should also preserve blank lines."""
         src = """def foo():
     from os import path
-    
+
     from sys import argv
-    
+
 
 x = 1
 """

@@ -514,6 +514,23 @@ def fix_blanks_ar011(source: str) -> tuple[str, set[int]]:  # noqa: C901
             non_blank_lines.append((i, get_indent_level(ln)))
     if not non_blank_lines:
         return source, set()
+
+    # Build list of scope entries from AST (if possible) for AR011 outdent detection.
+    # We collect (def_line_1based, base_indent) for classes and functions.
+    # If parsing fails (e.g., partial code), scopes will be empty but indent entry
+    # logic still works correctly.
+    scopes: list[tuple[int, int]] = []
+    try:
+        tree = ast.parse(source)
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef,
+                                 ast.ClassDef)):
+                lineno = getattr(node, 'lineno', None)
+                if lineno is not None and 0 < lineno <= len(lines):
+                    scopes.append((lineno, get_indent_level(lines[lineno - 1])))
+    except SyntaxError:
+        pass  # If parsing fails, continue without scope info
+
     to_remove: set[int] = set()
     for nbl_idx in range(len(non_blank_lines)):
         cur_lin, cur_indent = non_blank_lines[nbl_idx]
@@ -529,10 +546,29 @@ def fix_blanks_ar011(source: str) -> tuple[str, set[int]]:  # noqa: C901
                         to_remove.add(b)
         if next_nbl is not None:
             next_lin, next_indent = next_nbl
-            # OUTDENT EXIT: blank lines after exiting a block
+            # OUTDENT EXIT: blank lines after exiting a block.
             # Only remove if we're NOT at module level (indent=0 preserves
-            # section separators)
+            # section separators).
+
+            should_remove = False
             if cur_indent > next_indent and next_indent != 0:
+                # Find the innermost scope containing our current position
+                cur_lin_1based = cur_lin + 1
+                innermost_containing_scope = None
+                for entry_lineno, entry_indent in scopes:
+                    if entry_lineno < cur_lin_1based and cur_indent > entry_indent:
+                        innermost_containing_scope = (entry_lineno, entry_indent)
+
+                if innermost_containing_scope is not None:
+                    base_of_innermost = innermost_containing_scope[1]
+                    # If target indent equals the innermost scope's base (or goes
+                    # back TO a level that also contains a definition entry), we're
+                    # just moving to sibling code rather than truly exiting out.
+                    # Only remove blanks when going BELOW what contains us.
+                    if next_indent < base_of_innermost:
+                        should_remove = True
+
+            if should_remove:
                 for b in range(cur_lin + 1, next_lin):
                     if not lines[b].strip():
                         to_remove.add(b)
