@@ -49,9 +49,6 @@ def run_check(tmp_path: Path, src: str) -> tuple[str, int]:
     return captured.getvalue(), rc
 
 
-# === Fix Mode ===
-
-
 class TestAR004FixMode:
     """In fix mode, AR004 strips underscore from nested functions."""
 
@@ -98,9 +95,6 @@ class TestAR004FixMode:
         assert 'def inner()' in after
 
 
-# === Check Mode (non-fix) ===
-
-
 class TestAR004CheckMode:
     """In check mode, AR004 reports violations without modifying files."""
 
@@ -124,9 +118,6 @@ x()
         assert rc == 0
 
 
-# === Noqa Protection ===
-
-
 class TestAR004NoqaProtection:
     """Verify noqa directives suppress AR004 stripping."""
 
@@ -147,9 +138,6 @@ _helper()  # noqa: AR004
 """
         _, after, rc = run_hook(tmp_path, src)
         assert '_helper' in after
-
-
-# === Edge Cases ===
 
 
 class TestAR004EdgeCases:
@@ -185,9 +173,6 @@ cls_()
         assert 'cls_' in after
 
 
-# === Async Functions ===
-
-
 class TestAR004AsyncFunctions:
     """Nested async functions should follow the same AR004 rules."""
 
@@ -199,9 +184,6 @@ class TestAR004AsyncFunctions:
 """
         _, after, rc = run_hook(tmp_path, src)
         assert 'async def fetch()' in after
-
-
-# === Deeply Nested Functions ===
 
 
 class TestAR004DeepNesting:

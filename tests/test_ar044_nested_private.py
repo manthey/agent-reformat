@@ -44,9 +44,6 @@ def run_check(tmp_path: Path, src: str) -> tuple[str, int]:
     return captured.getvalue(), rc
 
 
-# === Without __all__ (everything implicitly exported) ===
-
-
 class TestNoAllDefined:
     """Without __all__, everything is public so nested functions should NOT be stripped."""
 
@@ -70,9 +67,6 @@ class TestNoAllDefined:
 """
         prev, result = run_hook(tmp_path, src)
         assert '_inner' in result
-
-
-# === With __all__ (only named names are public) ===
 
 
 class TestAllDefined:
@@ -274,7 +268,6 @@ _inner()
             run_agent([str(f2), '--rules=AR044', '--fix'])
         except SystemExit:
             pass
-
         # AR044 should not have changed since no __all__ means everything
         # public
         after_ar044 = f2.read_text()

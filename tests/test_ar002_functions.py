@@ -29,7 +29,7 @@ def run_hook(tmp_path: Path, source_code: str, fix: bool = True) -> tuple[str, s
     return source_code, f.read_text(), rc
 
 
-def run_check(tmp_path: Path, src: str) -> tuple[str, int]:
+def run_check(tmp_path: Path, src: str, rules: str = '') -> tuple[str, int]:
     """Check mode (no --fix). Returns (stdout, rc)."""
     f = tmp_path / 'sample.py'
     f.write_text(src)
@@ -41,13 +41,15 @@ def run_check(tmp_path: Path, src: str) -> tuple[str, int]:
     try:
         sys.stdout = captured
         try:
-            run([str(f)])
+            cmd_args = [str(f)]
+            if rules:
+                cmd_args.extend(['--rules', rules])
+            run(cmd_args)
         except SystemExit as e:
             rc = e.code if e.code is not None else 0
     finally:
         sys.stdout = original_stdout
     return captured.getvalue(), rc
-# === Fix Mode ===
 
 
 class TestAR002FixMode:
@@ -75,7 +77,6 @@ class TestAR002FixMode:
         src = 'def helper():\n\n    pass\n'
         _, after, _ = run_hook(tmp_path, src)
         assert 'helper()' in after
-# === Check Mode (non-fix) ===
 
 
 class TestAR002CheckMode:
@@ -87,9 +88,8 @@ class TestAR002CheckMode:
         assert 'AR002' in stdout
 
     def test_clean_file_no_violation(self, tmp_path: Path) -> None:
-        stdout, rc = run_check(tmp_path, 'def x():\n\n    pass\nx()\n')
+        stdout, rc = run_check(tmp_path, 'def x():\n\n    pass\nx()\n', rules='AR002')
         assert rc == 0
-# === Noqa Protection ===
 
 
 class TestAR002NoqaProtection:
@@ -103,7 +103,6 @@ class TestAR002NoqaProtection:
     def test_noqa_on_def_line(self, tmp_path: Path) -> None:
         """Noqa on the definition line protects."""
         run_check(tmp_path, '# noqa\n_x()\n')
-# === Edge Cases ===
 
 
 class TestAR002EdgeCases:
@@ -111,7 +110,7 @@ class TestAR002EdgeCases:
 
     def test_dunder_preserved(self, tmp_path: Path) -> None:
         src = 'def __version__():\n\n    pass\n'  # dunder -> skipped by code
-        stdout, rc = run_check(tmp_path, src)
+        stdout, rc = run_check(tmp_path, src, rules='AR002')
         assert '__version__' in src
         assert rc == 0
 
@@ -126,7 +125,6 @@ class TestAR002EdgeCases:
         src = 'def cls_():\n\n    pass\ncls_()\n'
         _, after, _ = run_hook(tmp_path, src)
         assert 'cls_' in after
-# === Async Functions ===
 
 
 class TestAR002AsyncFunctions:

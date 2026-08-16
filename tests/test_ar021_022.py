@@ -16,7 +16,6 @@ def run_fix(tmp_path: Path, source_code: str) -> tuple[str, str]:
     """Run agent-reformat in fix mode on a temp file. Returns (original, modified)."""
     f = tmp_path / 'test.py'
     f.write_text(source_code)
-
     original_stdout = sys.stdout
     captured = StringIO()
     try:

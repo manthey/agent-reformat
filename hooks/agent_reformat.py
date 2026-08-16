@@ -436,44 +436,51 @@ def strip_underscores(filepath, rules, dry_run=False, show=False):  # noqa: C901
     return violations
 
 
-def fix_blanks(filepath, rules, min_gap=3, dry_run=False, show=False):
+def fix_blanks(filepath, rules, min_gap=3, dry_run=False, show=False):  # noqa: C901
     """Apply AR011-014 to clean up blank lines. Returns violations."""
     active_rules = set(rules) if rules else set()
     if not active_rules:
         return []
     with open(filepath, encoding='utf-8', newline='') as f:
         source = f.read()
-    violations_found: list[int] = []
     # Process blank line rules AR011 through AR014
     ar011_active = 'AR011' in active_rules
     ar012_active = 'AR012' in active_rules
     ar013_active = 'AR013' in active_rules
     ar014_active = 'AR014' in active_rules
+    violations_found: list[tuple[int, str]] = []
+    new_source: str = source
     if ar011_active:
-        new_source = fix_blanks_ar011(source)
-    else:
-        new_source = source
+        new_source, removed = fix_blanks_ar011(new_source)
+        if removed:
+            blocks = collapse_contiguous(removed)
+            for first_idx in blocks:
+                violations_found.append((first_idx + 1, 'AR011'))
     if ar012_active:
-        new_source = fix_blanks_ar012(new_source)
+        new_source, removed = fix_blanks_ar012(new_source)
+        if removed:
+            blocks = collapse_contiguous(removed)
+            for first_idx in blocks:
+                violations_found.append((first_idx + 1, 'AR012'))
     if ar013_active:
-        new_source = fix_blanks_ar013(new_source, min_gap=min_gap)
+        new_source, removed = fix_blanks_ar013(new_source, min_gap=min_gap)
+        if removed:
+            blocks = collapse_contiguous(removed)
+            for first_idx in blocks:
+                violations_found.append((first_idx + 1, 'AR013'))
     if ar014_active:
-        new_source = fix_blanks_ar014(new_source)
+        new_source, removed = fix_blanks_ar014(new_source)
+        if removed:
+            blocks = collapse_contiguous(removed)
+            for first_idx in blocks:
+                violations_found.append((first_idx + 1, 'AR014'))
     changed = new_source != source
-    if changed and violations_found:
-        if show:
-            print(new_source.rstrip())
-        if not dry_run:
-            with open(filepath, 'w', encoding='utf-8', newline='') as f:
-                f.write(new_source)
-        return violations_found
-    if changed:
-        if show:
-            print(new_source.rstrip())
-        if not dry_run:
-            with open(filepath, 'w', encoding='utf-8', newline='') as f:
-                f.write(new_source)
-    return []  # no violations tracked for AR011; only modifies
+    if not dry_run and changed:
+        with open(filepath, 'w', encoding='utf-8', newline='') as f:
+            f.write(new_source)
+    if show and changed:
+        print(new_source.rstrip())
+    return violations_found
 
 
 def get_indent_level(line: str) -> int:
@@ -481,34 +488,38 @@ def get_indent_level(line: str) -> int:
     return len(line) - len(line.lstrip())
 
 
-def fix_blanks_ar011(source: str) -> str:  # noqa: C901
+def collapse_contiguous(indices: set[int]) -> list[int]:
+    """Collapse a set of contiguous indices into first-of-each-block."""
+    if not indices:
+        return []
+    result = []
+    for idx in sorted(indices):
+        if not result or idx != result[-1] + 1:
+            result.append(idx)
+    return result
+
+
+def fix_blanks_ar011(source: str) -> tuple[str, set[int]]:  # noqa: C901
     """AR011: Remove blank lines before/after indent/outdent transitions.
-    Removes ALL consecutive blank lines that appear immediately before or after
-    an indent (entry to a new block) or outdent (exit from a block) transition
-    between consecutive non-blank lines. This cleans up LLM-generated code's
-    excessive use of blank lines around block boundaries.
-    Preserved (not removed):
-    - Blanks at module level (indent=0) after outdents from inner blocks,
-      since they serve as PEP8-style section separators in the file structure.
-    - Trailing blanks at end of file.
+
+    Returns (new_source, set_of_0based_blank_line_indices_removed).
     """
     source = source.replace('\r\n', '\n')
     lines = source.split('\n')
     if not lines:
-        return source
+        return source, set()
     non_blank_lines: list[tuple[int, int]] = []  # (line_index_in_lines, indent)
     for i, ln in enumerate(lines):
         if ln.strip():
             non_blank_lines.append((i, get_indent_level(ln)))
     if not non_blank_lines:
-        return source
+        return source, set()
     to_remove: set[int] = set()
     for nbl_idx in range(len(non_blank_lines)):
         cur_lin, cur_indent = non_blank_lines[nbl_idx]
 
         prev_nbl = non_blank_lines[nbl_idx - 1] if nbl_idx > 0 else None
         next_nbl = non_blank_lines[nbl_idx + 1] if nbl_idx + 1 < len(non_blank_lines) else None
-
         if prev_nbl is not None:
             prev_lin, prev_indent = prev_nbl
             # INDENT ENTRY: blank lines before entering a new block
@@ -530,30 +541,23 @@ def fix_blanks_ar011(source: str) -> str:  # noqa: C901
     for i in range(len(lines) - 1, last_nbl_lin, -1):
         to_remove.discard(i)
     new_lines = [ln for i, ln in enumerate(lines) if i not in to_remove]
-    return '\n'.join(new_lines)
+    return '\n'.join(new_lines), to_remove
 
 
-def fix_blanks_ar012(source: str) -> str:  # noqa: C901
+def fix_blanks_ar012(source: str) -> tuple[str, set[int]]:  # noqa: C901
     """AR012: Remove ALL blank lines immediately before/after comments.
-
     Uses tokenize to identify actual comment tokens (not # inside strings).
-    Removes ALL consecutive blank lines that appear immediately before or after
-    comment lines, since those clearly show logical sections being separated.
-
-    Preserved (not removed):
-    - Blanks at end of file (trailing blanks).
-    - Blanks between function, method, or class definitions at module level.
-    - Blank lines inside multi-line strings (handled by tokenize).
+    Returns (new_source, set_of_0based_blank_line_indices_removed).
     """
     source = source.replace('\r\n', '\n')
     lines = source.split('\n')
     if not lines:
-        return source
+        return source, set()
     # Find real comment line numbers (1-based) using tokenize.
     try:
         tokens = list(tokenize.generate_tokens(io.StringIO(source).readline))
     except tokenize.TokenError:
-        return source
+        return source, set()
     comment_lines: set[int] = set()   # 1-based line numbers containing real comments
     pep723_end_lineno = -1            # Track PEP 723 '///' end marker line number
 
@@ -577,7 +581,7 @@ def fix_blanks_ar012(source: str) -> str:  # noqa: C901
             last_non_blank_idx = idx
             break
     if last_non_blank_idx is None:
-        return source  # All blank lines, no changes needed
+        return source, set()  # All blank lines, no changes needed
     trailing_start = last_non_blank_idx + 2  # 1-based: line after last content + 1
 
     to_remove: set[int] = set()  # indices (0-based) of blank lines to remove
@@ -617,7 +621,7 @@ def fix_blanks_ar012(source: str) -> str:  # noqa: C901
         if is_before_comment or is_after_comment:
             to_remove.add(idx)
     new_lines = [ln for i, ln in enumerate(lines) if i not in to_remove]
-    return '\n'.join(new_lines)
+    return '\n'.join(new_lines), to_remove
 
 
 STMT_TYPES_KW = (
@@ -736,7 +740,7 @@ def remove_empty_for_short_groups(groups_by_indent, min_gap, lines, protected):
     return to_remove
 
 
-def fix_blanks_ar014(source):  # noqa: C901
+def fix_blanks_ar014(source) -> tuple[str, set[int]]:  # noqa: C901
     """AR014: Remove blank lines between decorators and their target.
 
     Removes ALL consecutive blank lines that appear:
@@ -751,14 +755,14 @@ def fix_blanks_ar014(source):  # noqa: C901
     source = source.replace('\r\n', '\n')
     lines = source.split('\n')
     if not lines:
-        return source
+        return source, set()
     # Find all blank line indices to remove for AR014
     to_remove: set[int] = set()
     # Step 1: Get AST tree and find target function/class line numbers
     try:
         tree = ast.parse(source)
     except SyntaxError:
-        return source
+        return source, set()
     target_lines_1based: set[int] = set()
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
@@ -769,7 +773,7 @@ def fix_blanks_ar014(source):  # noqa: C901
     try:
         tok_list = list(tokenize.generate_tokens(io.StringIO(source).readline))
     except tokenize.TokenError:
-        return source
+        return source, set()
     string_lines = find_string_lines(source)
     # Collect 1-based line numbers of actual @ decorators (not in strings)
     dec_line_set: set[int] = set()
@@ -814,7 +818,7 @@ def fix_blanks_ar014(source):  # noqa: C901
                 continue
             to_remove.add(idx_0based)
     new_lines = [ln for i, ln in enumerate(lines) if i not in to_remove]
-    return '\n'.join(new_lines)
+    return '\n'.join(new_lines), to_remove
 
 
 def fix_blanks_ar013(source, min_gap=3):
@@ -822,11 +826,12 @@ def fix_blanks_ar013(source, min_gap=3):
 
     Blanks preserved: end-of-file; between def/class blocks;
     inside multi-line strings.
+    Returns (new_source, set_of_0based_blank_line_indices_removed).
     """
     source = source.replace('\r\n', '\n')
     lines = source.split('\n')
     if len(lines) <= 1:
-        return source
+        return source, set()
     string_lines = find_string_lines(source)
     tree = ast.parse(source)
     stmts_raw = collect_stmt_starts(source, lines, string_lines)
@@ -834,7 +839,7 @@ def fix_blanks_ar013(source, min_gap=3):
         set(stmts_raw), key=lambda e: e[0],
     )
     if len(deduped) < 2:
-        return source
+        return source, set()
     protected = find_protected_blanks(source, tree)
     groups_by_indent = group_same_indent(deduped, lines)
     to_remove = remove_empty_for_short_groups(
@@ -844,7 +849,7 @@ def fix_blanks_ar013(source, min_gap=3):
     new_lines = [
         ln for idx, ln in enumerate(lines) if idx not in to_remove
     ]
-    return '\n'.join(new_lines)
+    return '\n'.join(new_lines), to_remove
 
 
 def is_emoji_char(c):
@@ -1122,10 +1127,10 @@ def run(cli_args=None):
     for filepath in args.files:
         if not str(filepath).endswith('.py'):
             continue
-        changed = changed or process_file(
+        changed = process_file(
             args, filepath, effective_rules, und_codes_all, und_private_codes_all,
             blk_codes_all, cmt_rules_active, emj_codes_all,
-            gap=gap, comment_len=comment_len)
+            gap=gap, comment_len=comment_len) or changed
     sys.exit(1 if changed else 0)
 
 

@@ -6,7 +6,6 @@ import sys
 from pathlib import Path
 
 PACKAGE_ROOT = Path(__file__).resolve().parent.parent
-# === Helpers ===
 
 
 def run_fix(tmp_path: Path, source_code: str) -> tuple[str, str, int]:
@@ -29,7 +28,7 @@ def run_fix(tmp_path: Path, source_code: str) -> tuple[str, str, int]:
     return source_code, f.read_text(), rc
 
 
-def run_check(tmp_path: Path, src: str) -> tuple[str, int]:
+def run_check(tmp_path: Path, src: str, rules: str = '') -> tuple[str, int]:
     """Run agent-reformat in check mode (no --fix). Returns (stdout, rc)."""
     f = tmp_path / 'sample.py'
     f.write_text(src)
@@ -41,13 +40,15 @@ def run_check(tmp_path: Path, src: str) -> tuple[str, int]:
     try:
         sys.stdout = captured
         try:
-            run([str(f)])
+            cmd_args = [str(f)]
+            if rules:
+                cmd_args.extend(['--rules', rules])
+            run(cmd_args)
         except SystemExit as e:
             rc = e.code if e.code is not None else 0
     finally:
         sys.stdout = original_stdout
     return captured.getvalue(), rc
-# === Fix Mode ===
 
 
 class TestAR003FixMode:
@@ -93,7 +94,6 @@ class TestAR003FixMode:
         )
         _, after, rc = run_fix(tmp_path, src)
         assert 'def helper()' in after
-# === Check Mode (non-fix) ===
 
 
 class TestAR003CheckMode:
@@ -123,9 +123,8 @@ class TestAR003CheckMode:
             '\n'
             'x()\n'
         )
-        stdout, rc = run_check(tmp_path, src)
+        stdout, rc = run_check(tmp_path, src, rules='AR003')
         assert rc == 0
-# === Noqa Protection ===
 
 
 class TestAR003NoqaProtection:
@@ -157,7 +156,6 @@ class TestAR003NoqaProtection:
         )
         _, after, rc = run_fix(tmp_path, src)
         assert '_helper' in after
-# === Edge Cases ===
 
 
 class TestAR003EdgeCases:
@@ -201,7 +199,6 @@ class TestAR003EdgeCases:
         )
         _, after, rc = run_fix(tmp_path, src)
         assert 'cls_' in after
-# === Async Methods ===
 
 
 class TestAR003AsyncMethods:
