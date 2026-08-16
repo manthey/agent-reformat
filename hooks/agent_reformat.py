@@ -1092,8 +1092,7 @@ def strip_repeated_comments(filepath, rules=frozenset(), dry_run=False, show=Fal
         if not dry_run:
             with open(file_path, 'w', encoding='utf-8', newline='') as f:
                 f.write(new_source)
-        return violations
-    return []
+    return violations
 
 
 def process_file(args, filepath, effective_rules, und_codes_all,
