@@ -106,13 +106,19 @@ def has_noqa(line, rules=frozenset()):
     if not codes_text.strip():
         return True
     code_set = frozenset()
+    any_valid_code_found = False
     for raw in re.finditer(r'[A-Z]+\s*\d+', codes_text):
         token = raw.group(0).strip().replace(' ', '')
         try:
-            code_set |= set(expand_codes(token))
+            expanded = set(expand_codes(token))
+            code_set |= expanded
+            any_valid_code_found = True
         except ValueError:
+            # Invalid rule codes are ignored, we won't fall back to bare-noqa
             pass
-    return bool(code_set & rules) if code_set else True
+    if not any_valid_code_found:
+        return False  # Specific codes were asked for but none are valid -> no match
+    return bool(code_set & rules)
 
 
 def get_nested_func_parent_class(nested_name, nested_lineno, tree, class_is_public):
@@ -531,7 +537,6 @@ def fix_blanks_ar011(source: str) -> tuple[str, set[int]]:  # noqa: C901
     to_remove: set[int] = set()
     for nbl_idx in range(len(non_blank_lines)):
         cur_lin, cur_indent = non_blank_lines[nbl_idx]
-
         prev_nbl = non_blank_lines[nbl_idx - 1] if nbl_idx > 0 else None
         next_nbl = non_blank_lines[nbl_idx + 1] if nbl_idx + 1 < len(non_blank_lines) else None
         if prev_nbl is not None:
