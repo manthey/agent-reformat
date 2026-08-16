@@ -650,9 +650,13 @@ def find_string_lines(source):
 
 
 def collect_stmt_starts(source, lines, string_lines):
-    """Walk AST and collect (line0, indent) for statement nodes."""
+    """Walk AST and collect (line0, indent) for statement nodes.
+
+    Also returns import_line_numbers to allow AR013 to protect blanks around imports.
+    """
     tree = ast.parse(source)
     out: list[tuple[int, int]] = []
+    import_lines: set[int] = set()  # 0-based line numbers that are imports
 
     def visit(node):
         if isinstance(node, STMT_TYPES_KW):
@@ -666,6 +670,9 @@ def collect_stmt_starts(source, lines, string_lines):
                 )
                 if not skip:
                     out.append((ln0, get_indent_level(lines[ln0])))
+                    # Track import statements separately
+                    if isinstance(node, (ast.Import, ast.ImportFrom)):
+                        import_lines.add(ln0)
         for child in getattr(node, '_fields', ()):
             val = getattr(node, child, None)
             if isinstance(val, ast.AST):
@@ -675,7 +682,7 @@ def collect_stmt_starts(source, lines, string_lines):
                     if isinstance(item, ast.AST):
                         visit(item)
     visit(tree)
-    return out
+    return out, import_lines
 
 
 def find_protected_blanks(source, tree):
@@ -825,7 +832,7 @@ def fix_blanks_ar013(source, min_gap=3):
     """AR013: Remove blank lines when < min_gap statements at same indent.
 
     Blanks preserved: end-of-file; between def/class blocks;
-    inside multi-line strings.
+    inside multi-line strings; around import statements.
     Returns (new_source, set_of_0based_blank_line_indices_removed).
     """
     source = source.replace('\r\n', '\n')
@@ -834,13 +841,23 @@ def fix_blanks_ar013(source, min_gap=3):
         return source, set()
     string_lines = find_string_lines(source)
     tree = ast.parse(source)
-    stmts_raw = collect_stmt_starts(source, lines, string_lines)
+    stmts_raw, import_lines = collect_stmt_starts(source, lines, string_lines)
     deduped: list[tuple[int, int]] = sorted(
         set(stmts_raw), key=lambda e: e[0],
     )
     if len(deduped) < 2:
         return source, set()
     protected = find_protected_blanks(source, tree)
+
+    # Protect blank lines around import statements - blanks before/after imports
+    for imp_ln in import_lines:
+        # A blank line before the import (between previous statement and import)
+        if imp_ln > 0 and not lines[imp_ln - 1].strip():
+            protected.add(imp_ln - 1)
+        # A blank line after the import (between import and next statement)
+        if imp_ln + 1 < len(lines) and not lines[imp_ln + 1].strip():
+            protected.add(imp_ln + 1)
+
     groups_by_indent = group_same_indent(deduped, lines)
     to_remove = remove_empty_for_short_groups(
         groups_by_indent, min_gap, lines, protected,
