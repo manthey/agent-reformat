@@ -518,7 +518,6 @@ def fix_blanks_ar011(source: str) -> tuple[str, set[int]]:  # noqa: C901
             non_blank_lines.append((i, get_indent_level(ln)))
     if not non_blank_lines:
         return source, set()
-
     # Build list of scope entries from AST (if possible) for AR011 outdent
     # detection. We collect (def_line_1based, base_indent) for classes and
     # functions. If parsing fails (e.g., partial code), scopes will be empty
@@ -619,9 +618,7 @@ def fix_blanks_ar012(source: str) -> tuple[str, set[int]]:  # noqa: C901
     if last_non_blank_idx is None:
         return source, set()  # All blank lines, no changes needed
     trailing_start = last_non_blank_idx + 2  # 1-based: line after last content + 1
-
     to_remove: set[int] = set()  # indices (0-based) of blank lines to remove
-
     for idx, line in enumerate(lines):
         if line.strip():  # not a blank line - skip
             continue
@@ -741,10 +738,13 @@ def collect_stmt_starts(source, lines, string_lines):
             ln = getattr(node, 'lineno', None)
             if ln is not None:
                 ln0 = ln - 1
+                # Skip statements touching string tokens (e.g., around
+                # multi-line strings) so their blank lines are not handled
+                # as group gaps.  `off` is a small offset around the
+                # statement's own line (ln0), not an absolute line index.
                 skip = any(
                     ln0 + off in string_lines
-                    for off in range(max(0, ln0 - 2),
-                                     min(len(lines), ln0 + 3))
+                    for off in (-2, -1, 0, 1, 2)
                 )
                 if not skip:
                     out.append((ln0, get_indent_level(lines[ln0])))
@@ -773,6 +773,21 @@ def find_protected_blanks(source, tree):
                                  ast.AsyncFunctionDef,
                                  ast.ClassDef)):
             continue
+        # Preserve the blank lines directly above the definition, starting
+        # from its first decorator when one is present (the AST lineno is
+        # the 'def'/'class' keyword line, not the first decorator line).
+        # Blanks before a def/class are structural separators, so they must
+        # not be removed (e.g., between a class attribute and a decorated
+        # method).
+        top_0 = node.lineno - 1  # 0-based index of the def/class keyword
+        for dec in getattr(node, 'decorator_list', ()):
+            dec_ln = getattr(dec, 'lineno', None)
+            if dec_ln is not None and dec_ln - 1 < top_0:
+                top_0 = dec_ln - 1
+        idx = top_0 - 1
+        while idx >= 0 and not lines[idx].strip():
+            protected.add(idx)
+            idx -= 1
         end_ln = getattr(node, 'end_lineno', None)
         if end_ln is None:
             continue

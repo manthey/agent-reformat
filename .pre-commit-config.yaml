@@ -104,7 +104,7 @@ repos:
       - id: zizmor
         args: [--no-progress, --fix, --min-severity=low]
   - repo: https://github.com/manthey/agent-reformat
-    rev: v1.0.19
+    rev: v1.0.20
     hooks:
       - id: agent-reformat
-        args: [--fix]
+        args: [--fix, '--rules=AR00,AR02,AR03']
