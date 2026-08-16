@@ -1026,42 +1026,48 @@ def check_comment_line_length(filepath, rules, max_len=79):
 
 
 def strip_emojis(filepath, rules, dry_run=False, show=False):
-    """AR031/AR032: Remove emojis and replace decorative text. Returns violations."""
+    """AR031/AR032: Remove emojis and replace decorative text. Returns violations.
+
+    Each fix is gated by its own rule: emoji removal runs only when AR031
+    is active, decorative-text replacement only when AR032 is active, so a
+    file is never silently mutated by a rule the caller did not request.
+    """
     file_path = Path(filepath)
     with open(file_path, encoding='utf-8', newline='') as f:
         source = f.read()
-    # Decorative-text replacements (AR032) - replace before emoji removal
-    deco_replacements = {
-        '\u2713': '+',   # check mark to plain +
-        '\u2717': 'x',   # ballot X to plain x
-        '\u2718': 'x',   # heavy ballot X to plain x
-    }
-    new_source = source
-    for deco_char, repl in deco_replacements.items():
-        new_source = new_source.replace(deco_char, repl)
-    # Remove emoji characters
-    removed = ''.join(
-        '' if is_emoji_char(c) else c for c in new_source
-    )
-
-    changed = removed != source
     violations = []
-    if changed:
-        if 'AR031' in rules:
-            old_lines = source.splitlines()
-            for i, old_line in enumerate(old_lines, 1):
-                if has_genuine_emoji(old_line) and i <= len(removed.splitlines()):
-                    if removed.splitlines()[i - 1] != old_line:
-                        violations.append((i, 'AR031'))
-        if 'AR032' in rules:
+    new_source = source
+    # Decorative-text replacements (AR032) - replace before emoji removal
+    if 'AR032' in rules:
+        deco_replacements = {
+            '\u2713': '+',   # check mark to plain +
+            '\u2717': 'x',   # ballot X to plain x
+            '\u2718': 'x',   # heavy ballot X to plain x
+        }
+        replaced = new_source
+        for deco_char, repl in deco_replacements.items():
+            replaced = replaced.replace(deco_char, repl)
+        if replaced != new_source:
             for i, line in enumerate(source.splitlines(), 1):
                 if any(dc in line for dc in deco_replacements):
                     violations.append((i, 'AR032'))
+            new_source = replaced
+    # Remove emoji characters
+    if 'AR031' in rules:
+        removed = ''.join('' if is_emoji_char(c) else c for c in new_source)
+        if removed != new_source:
+            for i, old_line in enumerate(new_source.splitlines(), 1):
+                if has_genuine_emoji(old_line):
+                    violations.append((i, 'AR031'))
+            new_source = removed
+
+    changed = new_source != source
+    if changed:
         if show:
-            print(removed.rstrip())
+            print(new_source.rstrip())
         if not dry_run:
             with open(file_path, 'w', encoding='utf-8', newline='') as fw:
-                fw.write(removed)
+                fw.write(new_source)
     return violations
 
 
