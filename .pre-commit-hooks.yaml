@@ -3,10 +3,9 @@
   name: Reformat AI-generated Python code
   description: >
     Reformat common artifacts left by LLMs (e.g., excessive underscores, whitespace).
-    Supports individual rule codes via --rules. Use sparingly and review changes!
+    Supports individual rule codes via --rules.
   entry: agent-reformat
   language: python
-  language_version: python3.11
   files: \.py$
   additional_dependencies: []
   args: []

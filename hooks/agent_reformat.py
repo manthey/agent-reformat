@@ -448,6 +448,7 @@ def fix_blanks(filepath, rules, min_gap=3, dry_run=False, show=False):
     ar011_active = 'AR011' in active_rules
     ar012_active = 'AR012' in active_rules
     ar013_active = 'AR013' in active_rules
+    ar014_active = 'AR014' in active_rules
     if ar011_active:
         new_source = fix_blanks_ar011(source)
     else:
@@ -456,6 +457,8 @@ def fix_blanks(filepath, rules, min_gap=3, dry_run=False, show=False):
         new_source = fix_blanks_ar012(new_source)
     if ar013_active:
         new_source = fix_blanks_ar013(new_source, min_gap=min_gap)
+    if ar014_active:
+        new_source = fix_blanks_ar014(new_source)
     changed = new_source != source
     if changed and violations_found:
         if show:
@@ -500,7 +503,6 @@ def fix_blanks_ar011(source: str) -> str:  # noqa: C901
     if not non_blank_lines:
         return source
     to_remove: set[int] = set()
-
     for nbl_idx in range(len(non_blank_lines)):
         cur_lin, cur_indent = non_blank_lines[nbl_idx]
 
@@ -732,6 +734,87 @@ def remove_empty_for_short_groups(groups_by_indent, min_gap, lines, protected):
                         blank_idx not in protected):
                     to_remove.add(blank_idx)
     return to_remove
+
+
+def fix_blanks_ar014(source):  # noqa: C901
+    """AR014: Remove blank lines between decorators and their target.
+
+    Removes ALL consecutive blank lines that appear:
+    - Between a decorator line and the next (another decorator or target)
+    - After the last decorator and its function/class definition
+
+    Preserved (not removed):
+    - Blank lines inside multi-line strings (verified via tokenize).
+    - Module-level structural separators unrelated to decorators.
+    - File trailing blanks after last content.
+    """
+    source = source.replace('\r\n', '\n')
+    lines = source.split('\n')
+    if not lines:
+        return source
+    # Find all blank line indices to remove for AR014
+    to_remove: set[int] = set()
+    # Step 1: Get AST tree and find target function/class line numbers
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return source
+    target_lines_1based: set[int] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            ln = getattr(node, 'lineno', None)
+            if ln is not None:
+                target_lines_1based.add(ln)
+    # Step 2: Find decorator lines via tokenize
+    try:
+        tok_list = list(tokenize.generate_tokens(io.StringIO(source).readline))
+    except tokenize.TokenError:
+        return source
+    string_lines = find_string_lines(source)
+    # Collect 1-based line numbers of actual @ decorators (not in strings)
+    dec_line_set: set[int] = set()
+    for tok in tok_list:
+        if tok.type == tokenize.OP and tok.string == '@':
+            ln = tok.start[0]
+            if ln not in string_lines:
+                dec_line_set.add(ln)
+    # Step 3: For each target, find its decorator block.
+    # Walk backward from the line before target, skipping blanks, collecting
+    # @ lines.
+    for tline in sorted(target_lines_1based):
+        if tline <= 1:
+            continue
+        decs_block: list[int] = []
+        check_ln = tline - 1  # start from line right before target
+        while check_ln > 0:
+            if check_ln in string_lines:
+                break
+            if check_ln in dec_line_set:
+                decs_block.append(check_ln)
+                check_ln -= 1
+            elif not lines[check_ln - 1].strip():
+                # Blank line - skip it, might still be part of decor block
+                check_ln -= 1
+            else:
+                break
+        if not decs_block:
+            continue
+        decs_block.reverse()  # sort ascending
+        if not decs_block:
+            continue
+        first_dec_ln = min(decs_block)   # earliest @ in decorator block
+        # Remove blank lines in range [first_dec_ln, tline)
+        # Convert to 0-based for line list access
+        for ln_1based in range(first_dec_ln, tline):
+            idx_0based = ln_1based - 1
+            if not (0 <= idx_0based < len(lines)):
+                continue
+            # Skip non-blank lines (they're real content)
+            if lines[idx_0based].strip():
+                continue
+            to_remove.add(idx_0based)
+    new_lines = [ln for i, ln in enumerate(lines) if i not in to_remove]
+    return '\n'.join(new_lines)
 
 
 def fix_blanks_ar013(source, min_gap=3):

@@ -103,9 +103,8 @@ repos:
     hooks:
       - id: zizmor
         args: [--no-progress, --fix, --min-severity=low]
-  # Disable until we fix the blanks rules
   # - repo: https://github.com/manthey/agent-reformat
-  #   rev: v1.0.17
+  #   rev: v1.0.18
   #   hooks:
   #     - id: agent-reformat
   #       args: [--fix]
