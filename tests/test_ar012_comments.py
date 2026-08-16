@@ -186,3 +186,36 @@ class TestAR012CheckMode:
         finally:
             sys.stdout = original_stdout
         assert f.read_text() == src, 'Check mode must not modify the file'
+
+
+class TestAR012ImportProtection:
+    """Test that AR012 preserves blank lines after import statements."""
+
+    def test_blank_after_import_before_comment_preserved(self, tmp_path: Path) -> None:
+        """Blank line after import and before comment should be preserved."""
+        src = 'import os\n\n# This is a comment\nx = 1\n'
+        _, after = run_fix(tmp_path, src)
+        # Blank line after import must NOT be removed
+        assert 'import os\n\n#' in after
+
+    def test_blank_after_import_before_code_removed(self, tmp_path: Path) -> None:
+        """Blank lines after imports are preserved when next is code (not comment)."""
+        src = 'import os\n\n# Comment between import and another import\nimport sys\n'
+        _, after = run_fix(tmp_path, src)
+        # The blank after import before a comment should be preserved
+        assert 'import os\n\n#' in after
+
+    def test_blank_between_imports_not_removed(self, tmp_path: Path) -> None:
+        """Blank lines between import statements are preserved."""
+        src = 'import os\n\nimport sys\nx = 1\n'
+        _, after = run_fix(tmp_path, src)
+        # Blank after first import preserved
+        assert 'import os\n\n' in after
+        # Blank before second import is an import
+
+    def test_from_import_blank_preserved_before_comment(self, tmp_path: Path) -> None:
+        """Blank lines after from...import statements before comments are preserved."""
+        src = 'from os import path\n\n# Setup module\nx = 1\n'
+        _, after = run_fix(tmp_path, src)
+        # Blank line after from import must NOT be removed
+        assert 'from os import path\n\n#' in after

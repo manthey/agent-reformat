@@ -608,6 +608,18 @@ def fix_blanks_ar012(source: str) -> tuple[str, set[int]]:  # noqa: C901
                     pep723_end_lineno = lineno
                     continue
                 comment_lines.add(lineno)
+    # Collect import statement line numbers.
+    # PEP8 requires two blank lines after module-level imports.
+    import_lines: set[int] = set()
+    try:
+        tree = ast.parse(source)
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.Import, ast.ImportFrom)):
+                ln = getattr(node, 'lineno', None)
+                if ln is not None:
+                    import_lines.add(ln)
+    except SyntaxError:
+        pass  # If parsing fails, just don't protect imports
     # Find last non-blank line index for preserving trailing blanks
     last_non_blank_idx = None
     inv_range = range(len(lines) - 1, -1, -1)
@@ -648,6 +660,9 @@ def fix_blanks_ar012(source: str) -> tuple[str, set[int]]:  # noqa: C901
             if lines[n].strip():
                 next_content_line = n + 1  # 1-based
                 break
+        # Protect blank lines after import statements (PEP8 requirement)
+        if prev_content_line and prev_content_line in import_lines:
+            continue
         is_before_comment = (next_content_line and next_content_line in comment_lines)
         is_after_comment = (prev_content_line and prev_content_line in comment_lines)
 
