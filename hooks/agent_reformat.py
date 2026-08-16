@@ -941,6 +941,9 @@ def fix_blanks_ar013(source, min_gap=3):
     if len(deduped) < 2:
         return source, set()
     protected = find_protected_blanks(source, tree)
+    # Blank lines inside multi-line strings are not real blank lines and
+    # must never be removed, even if they fall between two statements.
+    protected.update(string_lines)
     # Protect blank lines around import statements - blanks before/after
     # imports
     for imp_ln in import_lines:
