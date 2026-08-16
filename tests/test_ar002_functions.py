@@ -101,8 +101,10 @@ class TestAR002NoqaProtection:
         assert '_x' in after
 
     def test_noqa_on_def_line(self, tmp_path: Path) -> None:
-        """Noqa on the definition line protects."""
-        run_check(tmp_path, '# noqa\n_x()\n')
+        """Bare # noqa suppresses all violations for nearby lines."""
+        stdout, rc = run_check(tmp_path, 'x  # noqa\n')
+        assert rc == 0
+        assert not stdout.strip()
 
 
 class TestAR002EdgeCases:

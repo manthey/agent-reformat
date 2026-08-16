@@ -257,7 +257,9 @@ class TestAR014EdgeCases:
         src = '@decorator\n\ndef bar(bla):\n'  # incomplete syntax but still parsed sometimes
         try:
             _, after = run_fix(tmp_path, src)
-            assert True  # At least didn't crash
+            # When there's no valid def to attach the decorator to, AR014
+            # shouldn't modify anything
+            assert after == src
         except SyntaxError:
             pass  # Expected if syntax is terrible
 

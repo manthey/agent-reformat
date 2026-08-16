@@ -90,7 +90,7 @@ class TestAR012ComplexScenarios:
         """Standalone comment inside function body should trigger removal."""
         src = 'def foo():\n\n    # Setup section\n\n    x = 1\n'
         _, after = run_fix(tmp_path, src)
-        # AR012 preserves structural spacing around comments per PEP8.
+        assert 'foo():\n    # Setup section' in after  # blank removed after def
 
     def test_nested_blank_before_comment_in_class(self, tmp_path: Path) -> None:
         """Blank before comment inside class should be removed."""
