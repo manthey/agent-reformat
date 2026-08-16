@@ -44,13 +44,16 @@ class TestAR013ImportsRegression:
 x = 1
 """
         _, after = run_fix(tmp_path, src)
-        # Blank line (could be empty or with spaces) between imports should be preserved
-        assert 'import os' in after and 'import sys' in after
+        # Blank line (could be empty or with spaces) between imports should be
+        # preserved
+        assert 'import os' in after
+        assert 'import sys' in after
         # Find the positions of import os and import sys
         lines = after.split('\n')
         for i, line in enumerate(lines):
             if 'import os' in line:
-                # Next non-empty line should be import sys (or blank then import sys)
+                # Next non-empty line should be import sys (or blank then
+                # import sys)
                 next_content = None
                 for j in range(i + 1, len(lines)):
                     if lines[j].strip():

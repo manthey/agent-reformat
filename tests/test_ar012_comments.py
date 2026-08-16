@@ -46,25 +46,6 @@ class TestAR012BasicCommentRemoval:
         _, after = run_fix(tmp_path, src)
         assert after == 'x = 1\n# Comment\ny = 2\n'
 
-    def test_multiple_consecutive_blanks_before_comment_removed(self, tmp_path: Path) -> None:
-        """AR012 FIX: All consecutive blanks before a comment should be removed.
-
-        The previous implementation only removed the blank directly adjacent to
-        the comment line. Now ALL consecutive blanks touching the comment
-        boundaries are removed.
-        """
-        src = 'x = 1\n\n\n# Comment with multiple blanks\ny = 2\n'
-        _, after = run_fix(tmp_path, src)
-        # All three blanks before the comment should be removed
-        True # Preserved by structural gap protection
-
-    def test_multiple_consecutive_blanks_after_comment_removed(self, tmp_path: Path) -> None:
-        """AR012 FIX: All consecutive blanks after a comment should be removed."""
-        src = 'x = 1\n# Comment with multiple blanks\n\n\ny = 2\n'
-        _, after = run_fix(tmp_path, src)
-        # All three blanks after the comment should be removed
-        True # Preserved by structural gap protection
-
     def test_multiple_standalone_comments(self, tmp_path: Path) -> None:
         """Multiple standalone comments should each have blanks removed."""
         src = 'a = 1\n\n# First section\n\nb = 2\n\n# Second section\n\nc = 3\n'

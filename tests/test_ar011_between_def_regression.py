@@ -48,16 +48,17 @@ class TestAR011BetweenDefRegression:
         for i, line in enumerate(lines):
             if 'def another_method' in line and i > 0:
                 assert not lines[i - 1].strip(), \
-                    "Blank line before def another_method was removed!"
+                    'Blank line before def another_method was removed!'
                 break
 
     def test_blank_between_module_functions_preserved(self, tmp_path: Path) -> None:
         """Blank line between module-level function definitions should be preserved."""
-        src = "def foo(): pass\n\n\ndef bar(): pass\n"
+        src = 'def foo(): pass\n\n\ndef bar(): pass\n'
         _, after = run_fix(tmp_path, src)
-        # Module-level func defs have 2+ blank lines between them for separation
+        # Module-level func defs have 2+ blank lines between them for
+        # separation
         assert '\n\n\n' in after or '\n\n' in after.replace('pass', ''), \
-            "Blank line between module-level functions was removed!"
+            'Blank line between module-level functions was removed!'
 
     def test_blank_after_function_before_module_var_preserved(self, tmp_path: Path) -> None:
         """Blank line after a function body (returning to lower indent) should be preserved."""
@@ -77,22 +78,22 @@ x = 2
                     if not lines[j].strip():
                         found_blank_after = True
                         break
-                    elif 'x =' in lines[j]:
+                    if 'x =' in lines[j]:
                         break
                 assert found_blank_after or i + 1 >= len(lines) - 1, \
-                    "Blank after function body was removed!"
+                    'Blank after function body was removed!'
                 break
 
     def test_blank_between_func_and_class_preserved(self, tmp_path: Path) -> None:
         """Blank between func and class at module level should be preserved."""
-        src = "def foo(): pass\n\nclass Bar:\n    pass\n"
+        src = 'def foo(): pass\n\nclass Bar:\n    pass\n'
         _, after = run_fix(tmp_path, src)
         # Module-level separation preserved
         lines = after.split('\n')
         for i, line in enumerate(lines):
             if 'class Bar' in line and i > 0:
                 assert not lines[i - 1].strip(), \
-                    "Blank before class was removed!"
+                    'Blank before class was removed!'
                 break
 
     def test_nested_scope_outdent_blank_preserved(self, tmp_path: Path) -> None:
@@ -108,7 +109,8 @@ x = 2
         lines = after.split('\n')
         for i, line in enumerate(lines):
             if 'y = 2' in line and i > 0:
-                # Blank should be preserved because we're in the same 'outer()' body
+                # Blank should be preserved because we're in the same 'outer()'
+                # body
                 assert not lines[i - 1].strip(), \
-                    "Blank between nested block and code at same level was removed!"
+                    'Blank between nested block and code at same level was removed!'
                 break

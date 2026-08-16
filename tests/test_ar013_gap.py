@@ -170,21 +170,6 @@ class TestAR013ComplexScenarios:
         # Two statements at indent 4 inside if < min_gap -> blank removed
         assert 'a = 1\n    b = 2' in after or 'a = 1\nb = 2' in after
 
-    def test_nested_function_few_stmts(self, tmp_path: Path) -> None:
-        """Module-level few statements should be cleaned."""
-        src = """a = 1
-
-b = 2
-
-
-x = 99
-"""
-        _, after = run_fix(tmp_path, src)
-        # All three at indent 0: ONE group of 3 (>= min_gap), but blank lines
-        # kept only for section separation. Actually 3 >= 3 so per our
-        # interpretation blanks are kept. But the user says min_gap statements
-        # "in a row" - x=99 comes after b=2 with gap, so that pair is < min_gap
-
 
 class TestAR013EdgeCases:
     """Test edge cases."""
@@ -211,22 +196,6 @@ class TestAR013EdgeCases:
         src = 'if True:\n    pass\nx = 1\n'
         _, after = run_fix(tmp_path, src)
         assert after == src
-
-
-class TestAR013WithOtherRules:
-    """Test AR013 interacts correctly with other rules."""
-
-    def test_ar012_treated_as_statement_marker(self, tmp_path: Path) -> None:
-        """Comments count as statements for the count."""
-        # With AR013 alone and 3 total (a, comment, b), blanks should be kept
-        src = """a = 1
-
-# middle comment
-
-b = 2
-"""
-        _, after = run_fix(tmp_path, src)
-        # 3 >= min_gap=3 so blank preserved between a and comment
 
 
 class TestAR013CheckMode:

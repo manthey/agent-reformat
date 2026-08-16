@@ -397,7 +397,6 @@ def strip_underscores(filepath, rules, dry_run=False, show=False):  # noqa: C901
             usages.setdefault(node.id, []).append(getattr(node, 'lineno', None))
     has_ar004 = 'AR004' in set(rules) & {'AR001', 'AR002', 'AR003', 'AR004'}
     has_ar044 = 'AR044' in set(rules) & {'AR041', 'AR042', 'AR043', 'AR044'}
-
     for ident, lineno in nested_defs:
         if not ident.startswith('_') or ident.startswith('__') or ident.endswith('_'):
             continue
@@ -501,7 +500,6 @@ def collapse_contiguous(indices: set[int]) -> list[int]:
 
 def fix_blanks_ar011(source: str) -> tuple[str, set[int]]:  # noqa: C901
     """AR011: Remove blank lines before/after indent/outdent transitions.
-
     Returns (new_source, set_of_0based_blank_line_indices_removed).
     """
     source = source.replace('\r\n', '\n')
@@ -515,10 +513,10 @@ def fix_blanks_ar011(source: str) -> tuple[str, set[int]]:  # noqa: C901
     if not non_blank_lines:
         return source, set()
 
-    # Build list of scope entries from AST (if possible) for AR011 outdent detection.
-    # We collect (def_line_1based, base_indent) for classes and functions.
-    # If parsing fails (e.g., partial code), scopes will be empty but indent entry
-    # logic still works correctly.
+    # Build list of scope entries from AST (if possible) for AR011 outdent
+    # detection. We collect (def_line_1based, base_indent) for classes and
+    # functions. If parsing fails (e.g., partial code), scopes will be empty
+    # but indent entry logic still works correctly.
     scopes: list[tuple[int, int]] = []
     try:
         tree = ast.parse(source)
@@ -530,7 +528,6 @@ def fix_blanks_ar011(source: str) -> tuple[str, set[int]]:  # noqa: C901
                     scopes.append((lineno, get_indent_level(lines[lineno - 1])))
     except SyntaxError:
         pass  # If parsing fails, continue without scope info
-
     to_remove: set[int] = set()
     for nbl_idx in range(len(non_blank_lines)):
         cur_lin, cur_indent = non_blank_lines[nbl_idx]
@@ -549,7 +546,6 @@ def fix_blanks_ar011(source: str) -> tuple[str, set[int]]:  # noqa: C901
             # OUTDENT EXIT: blank lines after exiting a block.
             # Only remove if we're NOT at module level (indent=0 preserves
             # section separators).
-
             should_remove = False
             if cur_indent > next_indent and next_indent != 0:
                 # Find the innermost scope containing our current position
@@ -558,13 +554,13 @@ def fix_blanks_ar011(source: str) -> tuple[str, set[int]]:  # noqa: C901
                 for entry_lineno, entry_indent in scopes:
                     if entry_lineno < cur_lin_1based and cur_indent > entry_indent:
                         innermost_containing_scope = (entry_lineno, entry_indent)
-
                 if innermost_containing_scope is not None:
                     base_of_innermost = innermost_containing_scope[1]
-                    # If target indent equals the innermost scope's base (or goes
-                    # back TO a level that also contains a definition entry), we're
-                    # just moving to sibling code rather than truly exiting out.
-                    # Only remove blanks when going BELOW what contains us.
+                    # If target indent equals the innermost scope's base (or
+                    # goes back TO a level that also contains a definition
+                    # entry), we're just moving to sibling code rather than
+                    # truly exiting out. Only remove blanks when going BELOW
+                    # what contains us.
                     if next_indent < base_of_innermost:
                         should_remove = True
 
@@ -596,7 +592,6 @@ def fix_blanks_ar012(source: str) -> tuple[str, set[int]]:  # noqa: C901
         return source, set()
     comment_lines: set[int] = set()   # 1-based line numbers containing real comments
     pep723_end_lineno = -1            # Track PEP 723 '///' end marker line number
-
     for tok in tokens:
         if tok.type == tokenize.COMMENT:
             lineno = tok.start[0]
@@ -656,42 +651,46 @@ def fix_blanks_ar012(source: str) -> tuple[str, set[int]]:  # noqa: C901
 
         if is_before_comment or is_after_comment:
             # Protection against overzealous comment-adjacent blank removal.
-            # If a highly indented comment (e.g. an inner function's docstring/comment)
-            # touches structural spacing that belongs to the outer scope, we must NOT collapse it.
-            
+            # If a highly indented comment (e.g. an inner function's
+            # docstring/comment) touches structural spacing that belongs to the
+            # outer scope, we must NOT collapse it.
+
             target_blank_indent = get_indent_level(line)  # indent of this specific blank line
-            
+
             prev_lno = prev_content_line - 1 if prev_content_line else None
             next_lno = next_content_line - 1 if next_content_line else None
-            
+
             prev_content_indent = get_indent_level(lines[prev_lno]) if prev_lno is not None else -1
             next_content_indent = get_indent_level(lines[next_lno]) if next_lno is not None else -1
-            
+
             target_blank_indent = get_indent_level(line)
-            
+
             prev_lno = prev_content_line - 1 if prev_content_line else None
             next_lno = next_content_line - 1 if next_content_line else None
-            
+
             prev_content_indent = get_indent_level(lines[prev_lno]) if prev_lno is not None else -1
             next_content_indent = get_indent_level(lines[next_lno]) if next_lno is not None else -1
-                
+
             skip_removal = False
-                
-            # Rule 1: Scope boundary protection. If this blank line is at a lower indent (e.g. 
-            # module level) but surrounds content that is heavily indented (inner scope comments),
-            # it acts as an external separator! Don't collapse it because of inner-scope rules.
-            if target_blank_indent < prev_content_indent and target_blank_indent < next_content_indent:
+
+            # Rule 1: Scope boundary protection. If this blank line is at a
+            # lower indent (e.g. module level) but surrounds content that is
+            # heavily indented (inner scope comments), it acts as an external
+            # separator! Don't collapse it because of inner-scope rules.
+            if (target_blank_indent < prev_content_indent and
+                    target_blank_indent < next_content_indent):
                 skip_removal = True
-                
-            # Rule 2: Multi-blank protection at same depth. Even if indents match, never eat all 
-            # consecutive blank lines in a row! PEP8 requires blanks around top-level defs/classes. 
-            # This prevents AR012 from collapsing entire module gaps into zero spacing.
+
+            # Rule 2: Multi-blank protection at same depth. Even if indents
+            # match, never eat all consecutive blank lines in a row! PEP8
+            # requires blanks around top-level defs/classes. This prevents
+            # AR012 from collapsing entire module gaps into zero spacing.
             elif target_blank_indent == prev_content_indent == next_content_indent:
                 prev_blank_adjacent = ((idx > 0) and not lines[idx - 1].strip())
                 next_blank_adjacent = ((idx + 1 < len(lines)) and not lines[idx + 1].strip())
                 if (prev_blank_adjacent or next_blank_adjacent):
                     skip_removal = True
-                    
+
             if not skip_removal:
                 to_remove.add(idx)
     new_lines = [ln for i, ln in enumerate(lines) if i not in to_remove]
@@ -922,10 +921,11 @@ def fix_blanks_ar013(source, min_gap=3):
     if len(deduped) < 2:
         return source, set()
     protected = find_protected_blanks(source, tree)
-
-    # Protect blank lines around import statements - blanks before/after imports
+    # Protect blank lines around import statements - blanks before/after
+    # imports
     for imp_ln in import_lines:
-        # A blank line before the import (between previous statement and import)
+        # A blank line before the import (between previous statement and
+        # import)
         if imp_ln > 0 and not lines[imp_ln - 1].strip():
             protected.add(imp_ln - 1)
         # A blank line after the import (between import and next statement)
