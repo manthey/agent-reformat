@@ -655,7 +655,45 @@ def fix_blanks_ar012(source: str) -> tuple[str, set[int]]:  # noqa: C901
         is_after_comment = (prev_content_line and prev_content_line in comment_lines)
 
         if is_before_comment or is_after_comment:
-            to_remove.add(idx)
+            # Protection against overzealous comment-adjacent blank removal.
+            # If a highly indented comment (e.g. an inner function's docstring/comment)
+            # touches structural spacing that belongs to the outer scope, we must NOT collapse it.
+            
+            target_blank_indent = get_indent_level(line)  # indent of this specific blank line
+            
+            prev_lno = prev_content_line - 1 if prev_content_line else None
+            next_lno = next_content_line - 1 if next_content_line else None
+            
+            prev_content_indent = get_indent_level(lines[prev_lno]) if prev_lno is not None else -1
+            next_content_indent = get_indent_level(lines[next_lno]) if next_lno is not None else -1
+            
+            target_blank_indent = get_indent_level(line)
+            
+            prev_lno = prev_content_line - 1 if prev_content_line else None
+            next_lno = next_content_line - 1 if next_content_line else None
+            
+            prev_content_indent = get_indent_level(lines[prev_lno]) if prev_lno is not None else -1
+            next_content_indent = get_indent_level(lines[next_lno]) if next_lno is not None else -1
+                
+            skip_removal = False
+                
+            # Rule 1: Scope boundary protection. If this blank line is at a lower indent (e.g. 
+            # module level) but surrounds content that is heavily indented (inner scope comments),
+            # it acts as an external separator! Don't collapse it because of inner-scope rules.
+            if target_blank_indent < prev_content_indent and target_blank_indent < next_content_indent:
+                skip_removal = True
+                
+            # Rule 2: Multi-blank protection at same depth. Even if indents match, never eat all 
+            # consecutive blank lines in a row! PEP8 requires blanks around top-level defs/classes. 
+            # This prevents AR012 from collapsing entire module gaps into zero spacing.
+            elif target_blank_indent == prev_content_indent == next_content_indent:
+                prev_blank_adjacent = ((idx > 0) and not lines[idx - 1].strip())
+                next_blank_adjacent = ((idx + 1 < len(lines)) and not lines[idx + 1].strip())
+                if (prev_blank_adjacent or next_blank_adjacent):
+                    skip_removal = True
+                    
+            if not skip_removal:
+                to_remove.add(idx)
     new_lines = [ln for i, ln in enumerate(lines) if i not in to_remove]
     return '\n'.join(new_lines), to_remove
 
