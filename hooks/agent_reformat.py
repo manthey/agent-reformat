@@ -506,6 +506,10 @@ def collapse_contiguous(indices: set[int]) -> list[int]:
 
 def fix_blanks_ar011(source: str) -> tuple[str, set[int]]:  # noqa: C901
     """AR011: Remove blank lines before/after indent/outdent transitions.
+
+    Blank lines inside multi-line string literals are never removed (this rule
+    is otherwise pure text-indent analysis and would otherwise corrupt string
+    content -- the same guard AR012/AR013/AR014 apply).
     Returns (new_source, set_of_0based_blank_line_indices_removed).
     """
     source = source.replace('\r\n', '\n')
@@ -576,6 +580,11 @@ def fix_blanks_ar011(source: str) -> tuple[str, set[int]]:  # noqa: C901
     last_nbl_lin = non_blank_lines[-1][0] if non_blank_lines else -1
     for i in range(len(lines) - 1, last_nbl_lin, -1):
         to_remove.discard(i)
+    # Blank lines that are part of a multi-line STRING token are not
+    # structural whitespace -- they are string content.  AR011 is pure
+    # text-indent based, so guard it the same way AR012/AR013/AR014 do by
+    # excluding every line covered by a string literal from to_remove.
+    to_remove -= find_string_lines(source)
     new_lines = [ln for i, ln in enumerate(lines) if i not in to_remove]
     return '\n'.join(new_lines), to_remove
 
