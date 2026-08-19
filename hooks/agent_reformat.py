@@ -54,6 +54,14 @@ BMP_PATTERNS = [
 ]
 bmp_re = re.compile('|'.join(f'[{p}]' for p in BMP_PATTERNS))
 
+MODULE_STRUCTURAL_PREFIXES = (
+    'def ',   # function definition
+    'class ',  # class definition
+    '@',      # decorators
+    'import ',  # import statement
+    'from ',  # from...import
+)
+
 
 def find_pep723_block(source: str) -> tuple[int, int]:
     """Return (start_lineno, end_lineno) of PEP 723 block or (-1, -1) if not found.
@@ -311,6 +319,10 @@ def strip_underscores(filepath, rules, dry_run=False, show=False):  # noqa: C901
     for node in ast.walk(tree):
         if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
             usages.setdefault(node.id, []).append(getattr(node, 'lineno', None))
+        # Track Attribute.attr accesses (e.g. self.helper -> helper usage)
+        elif hasattr(node, 'attr') and isinstance(node.ctx, ast.Load):
+            if isinstance(node.attr, str):
+                usages.setdefault(node.attr, []).append(getattr(node, 'lineno', None))
     raw_defs = collect_definitions_by_type(tree)
     # Collect nested function definitions
     nested_defs = collect_nested_functions(tree)
@@ -397,10 +409,13 @@ def strip_underscores(filepath, rules, dry_run=False, show=False):  # noqa: C901
         violations.append(
             (lineno, get_rule_code(kind, bool(active_new_rules and not active_old_rules))))
     # Process nested functions for AR004/AR044
-    usages = {}
+    usages = {}  # lines per identifier (also tracks Attribute.attr)
     for node in ast.walk(tree):
         if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
             usages.setdefault(node.id, []).append(getattr(node, 'lineno', None))
+        elif hasattr(node, 'attr') and isinstance(node.ctx, ast.Load):
+            if isinstance(node.attr, str):
+                usages.setdefault(node.attr, []).append(getattr(node, 'lineno', None))
     has_ar004 = 'AR004' in set(rules) & {'AR001', 'AR002', 'AR003', 'AR004'}
     has_ar044 = 'AR044' in set(rules) & {'AR041', 'AR042', 'AR043', 'AR044'}
     for ident, lineno in nested_defs:
@@ -491,6 +506,15 @@ def fix_blanks(filepath, rules, min_gap=3, dry_run=False, show=False):  # noqa: 
 def get_indent_level(line: str) -> int:
     """Return the number of leading spaces/tabs in a line."""
     return len(line) - len(line.lstrip())
+
+
+def is_module_level_structural_element(text: str) -> bool:
+    """Return True if *text* looks like module-level structural element.
+
+    Used by AR012 to avoid collapsing blanks around top-level defs/classes/comments.
+    """
+    stripped = text.strip()
+    return any(stripped.startswith(prefix) for prefix in MODULE_STRUCTURAL_PREFIXES)
 
 
 def collapse_contiguous(indices: set[int]) -> list[int]:
@@ -621,17 +645,25 @@ def fix_blanks_ar012(source: str) -> tuple[str, set[int]]:  # noqa: C901
                 if stripped == '# ///':
                     pep723_end_lineno = lineno
                     continue
+                # Skip shebang lines (#!) -- they are not regular comments
+                if stripped.startswith('#!'):
+                    continue
                 comment_lines.add(lineno)
     # Collect import statement line numbers.
     # PEP8 requires two blank lines after module-level imports.
     import_lines: set[int] = set()
+    import_end_lines: set[int] = set()  # end_lineno of imports to protect blanks
     try:
         tree = ast.parse(source)
         for node in ast.walk(tree):
             if isinstance(node, (ast.Import, ast.ImportFrom)):
-                ln = getattr(node, 'lineno', None)
-                if ln is not None:
-                    import_lines.add(ln)
+                ln_start = getattr(node, 'lineno', None)
+                if ln_start is not None:
+                    import_lines.add(ln_start)
+                ln_end = getattr(node, 'end_lineno', None)
+                if ln_end is not None:
+                    for l in range(ln_start, ln_end + 1):
+                        import_end_lines.add(l)
     except SyntaxError:
         pass  # If parsing fails, just don't protect imports
     # Find last non-blank line index for preserving trailing blanks
@@ -675,7 +707,26 @@ def fix_blanks_ar012(source: str) -> tuple[str, set[int]]:  # noqa: C901
                 next_content_line = n + 1  # 1-based
                 break
         # Protect blank lines after import statements (PEP8 requirement)
-        if prev_content_line and prev_content_line in import_lines:
+        if prev_content_line and (
+            prev_content_line in import_lines or
+            prev_content_line in import_end_lines
+        ):
+            continue
+        # Also protect blanks BEFORE imports (e.g., comments before imports)
+        if next_content_line and (
+            next_content_line in import_lines or
+            next_content_line in import_end_lines
+        ):
+            continue
+
+        def is_shebang(lineno):
+            """Check if lineno points to a shebang line."""
+            if lineno and 0 < lineno <= len(lines):
+                return lines[lineno - 1].lstrip().startswith('#!')
+            return False
+
+        # Preserve blank line immediately after a shebang
+        if prev_content_line and is_shebang(prev_content_line):
             continue
         is_before_comment = (next_content_line and next_content_line in comment_lines)
         is_after_comment = (prev_content_line and prev_content_line in comment_lines)
@@ -983,7 +1034,6 @@ def fix_blanks_ar013(source, min_gap=3):
         # A blank line after the import (between import and next statement)
         if imp_ln + 1 < len(lines) and not lines[imp_ln + 1].strip():
             protected.add(imp_ln + 1)
-
     groups_by_indent = group_same_indent(deduped, lines)
     to_remove = remove_empty_for_short_groups(
         groups_by_indent, min_gap, lines, protected,
@@ -1092,7 +1142,6 @@ def strip_emojis(filepath, rules, dry_run=False, show=False):
                 if has_genuine_emoji(old_line):
                     violations.append((i, 'AR031'))
             new_source = removed
-
     changed = new_source != source
     if changed:
         if show:
