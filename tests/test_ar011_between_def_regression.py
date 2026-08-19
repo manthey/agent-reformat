@@ -114,3 +114,68 @@ x = 2
                 assert not lines[i - 1].strip(), \
                     'Blank between nested block and code at same level was removed!'
                 break
+
+    def test_blank_between_nested_classes_inside_method_preserved(
+        self, tmp_path: Path,
+    ) -> None:
+        """Blanks before sibling class definitions inside a method body.
+
+        Regression test for the bug where AR011 incorrectly removed blank lines
+        between sibling class definitions that are nested inside a method.
+        The transition from inside a deeply-nested method back to its containing
+        scope (another class definition at the same level) was incorrectly
+        treated as an "outdent" causing blanks to be wiped.
+        """
+        src = """class Outer:
+    def outer_method(self):
+        class Inner:
+            def inner_get_tile(self, x, y):
+                return (
+                    1,
+                    2,
+                )
+
+
+        class Inner2:
+            pass
+
+    def another_outer_method(self):
+        pass
+"""
+        _, after = run_fix(tmp_path, src)
+
+        # Verify two blank lines before the nested class "Inner2" are preserved
+        lines = after.split('\n')
+        for i, line in enumerate(lines):
+            if 'class Inner2' in line and i > 1:
+                prev_two_lines = [lines[i - 1], lines[i - 2]]
+                assert all(not l.strip() for l in prev_two_lines), (
+                    f"Blank lines before 'class Inner2' were removed! "
+                    f'Lines at {i-2}:{repr(prev_two_lines[0])} and {i-1}:{repr(prev_two_lines[1])}'
+                )
+
+    def test_blank_after_deeply_nested_method_return_preserved(
+        self, tmp_path: Path,
+    ) -> None:
+        """Blank lines preserved when method body ends at deep indent level."""
+        src = """class C:
+    def f(self):
+        result = compute(
+            a,
+            b,
+        )
+
+        return wrap(result)
+
+    def g(self):
+        pass
+"""
+        _, after = run_fix(tmp_path, src)
+        # The transition from 'return wrap' (deeper indent) to 'def g' should
+        # still preserve the blank because both are sibling methods inside C.
+        lines = after.split('\n')
+        for i, line in enumerate(lines):
+            if 'def g' in line and i > 0:
+                assert not lines[i - 1].strip(), \
+                    "Blank before sibling method 'g' was removed!"
+                break

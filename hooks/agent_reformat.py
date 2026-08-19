@@ -571,7 +571,12 @@ def fix_blanks_ar011(source: str) -> tuple[str, set[int]]:  # noqa: C901
                     # what contains us.
                     if next_indent < base_of_innermost:
                         should_remove = True
-
+                    # Avoid removing blanks before def/class at lower indent.
+                    if should_remove:
+                        for check_lineno, check_indent in scopes:
+                            if check_indent == next_indent and check_lineno > cur_lin_1based + 1:
+                                should_remove = False
+                                break
             if should_remove:
                 for b in range(cur_lin + 1, next_lin):
                     if not lines[b].strip():
