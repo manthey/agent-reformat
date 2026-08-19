@@ -71,7 +71,7 @@ In `pyproject.toml`:
 rules = ["AR011", "AR012"]  # list of rule codes
 
 # Configuration options (also via tox.ini):
-blank_lines_gap = 3         # min gap between blank lines (AR012)
+blank_lines_gap = 3         # min gap between blank lines (AR013)
 comment_lines_max = 79      # max length for comment-only lines (AR022)
 ```
 
@@ -82,5 +82,5 @@ In `tox.ini`:
 rules = AR014,AR015
 
 ; Configuration options:
-blank_lines_gap = 3         ; min gap between blank lines (AR012)
+blank_lines_gap = 3         ; min gap between blank lines (AR013)
 comment_lines_max = 79      ; max length for comment-only lines (AR022)

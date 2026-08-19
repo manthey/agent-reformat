@@ -258,73 +258,73 @@ class TestAllRulesFire:
 
 
 class TestSpotChecks:
-    def _clean(self, tmp_path):
+    def clean(self, tmp_path):
         return run(tmp_path)[0]
 
     def test_001_stripped(self, tmp_path):
-        out = self._clean(tmp_path)
+        out = self.clean(tmp_path)
         msg = 'AR001: _private_var should become private_var'
         assert 'private_var = 3' in out, msg
 
     def test_001_unused_kept(self, tmp_path):
-        out = self._clean(tmp_path)
+        out = self.clean(tmp_path)
         msg = '_unused_var must stay (never loaded)'
         assert '_unused_var = 99' in out, msg
 
     def test_dunder_kept(self, tmp_path):
-        out = self._clean(tmp_path)
+        out = self.clean(tmp_path)
         assert '__magic__ = True' in out
 
     def test_double_underscore_kept(self, tmp_path):
-        out = self._clean(tmp_path)
+        out = self.clean(tmp_path)
         assert '__internal_state = 10' in out
 
     def test_trailing_underscore_kept(self, tmp_path):
-        out = self._clean(tmp_path)
+        out = self.clean(tmp_path)
         assert 'foo_bar_ =' in out
 
     def test_002_stripped(self, tmp_path):
-        out = self._clean(tmp_path)
+        out = self.clean(tmp_path)
         assert 'def inner_fn()' in out, 'AR002: _inner_fn -> inner_fn'
 
     def test_003_stripped(self, tmp_path):
-        out = self._clean(tmp_path)
+        out = self.clean(tmp_path)
         assert 'def method(self)' in out, 'AR003: _method -> method'
 
     def test_004_stripped(self, tmp_path):
-        out = self._clean(tmp_path)
+        out = self.clean(tmp_path)
         assert 'def nested_in_class()' in out, 'AR004 nested_in_class'
         assert 'def nested_in_fn()' in out, 'AR004 nested_in_fn'
 
     def test_011_entry_blank_removed(self, tmp_path):
-        out = self._clean(tmp_path)
+        out = self.clean(tmp_path)
         # The blank lines after the entry colon must be removed; the body kept
         msg = 'AR011: entry blanks for ``def ar011_entry():`` should be gone'
         assert 'def ar011_entry():\n    return 1' in out, msg
 
     def test_noqa_var_kept(self, tmp_path):
-        out = self._clean(tmp_path)
+        out = self.clean(tmp_path)
         assert '_noqa_var = 1' in out, 'noqa-protected var must stay'
 
     def test_noqa_fn_kept(self, tmp_path):
-        out = self._clean(tmp_path)
+        out = self.clean(tmp_path)
         assert 'def _noqa_fn()' in out, 'noqa-protected fn must stay'
 
     def test_ar031_emoji_removed(self, tmp_path):
-        out = self._clean(tmp_path)
+        out = self.clean(tmp_path)
         # The supplementary-plane emoji U+1F600 must be gone
         assert chr(0x1F600) not in out, 'AR031: U+1F600 should be removed'
 
     def test_ar032_deco_replaced(self, tmp_path):
-        out = self._clean(tmp_path)
+        out = self.clean(tmp_path)
         # U+2713 (checkmark) should have been replaced by AR032
         assert chr(0x2713) not in out, 'AR032: U+2713 should be replaced'
 
     def test_ar021_hash_line_removed(self, tmp_path):
-        out = self._clean(tmp_path)
+        out = self.clean(tmp_path)
         assert '##########' not in out, 'AR021: ########## line must be removed'
 
     def test_non_emoji_preserved(self, tmp_path):
-        out = self._clean(tmp_path)
+        out = self.clean(tmp_path)
         # U+00E9 (e-acute) is NOT an emoji and must remain
         assert chr(0x00E9) in out, 'non-emoji U+00E9 should be preserved'
