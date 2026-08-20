@@ -775,6 +775,40 @@ def fix_blanks_ar012(source: str) -> tuple[str, set[int]]:  # noqa: C901
                 if (prev_blank_adjacent or next_blank_adjacent):
                     skip_removal = True
 
+            # Rule 3: Protect blank lines at module level.
+            # If this blank is at indent=0 and both sides reach structural
+            # elements, preserve spacing. Prevents incorrect removal between
+            # modules.
+            if not skip_removal and target_blank_indent == 0:
+                # Look past comments/blanks for true structural elements
+                prev_structural_line = None
+                next_structural_line = None
+                start_p = prev_lno if prev_lno is not None else idx - 1
+                for p in range(start_p, -1, -1):
+                    pline_text = lines[p] if p >= 0 else ''
+                    if pline_text.strip():
+                        # Skip non-structural. If line starts
+                        if pline_text.lstrip().startswith('#'):
+                            continue
+                        if is_module_level_structural_element(pline_text):
+                            prev_structural_line = p + 1
+                            break
+                start_n = next_lno if next_lno is not None else idx + 1
+                for n in range(start_n, len(lines)):
+                    nline_text = lines[n] if n < len(lines) else ''
+                    if nline_text.strip():
+                        # Skip non-structural. If line starts
+                        if nline_text.lstrip().startswith('#'):
+                            continue
+                        if is_module_level_structural_element(nline_text):
+                            next_structural_line = n + 1
+                            break
+                # Protect blanks when structural elements exist on both sides
+                # this is section spacing between top-level constructs,
+                # not inner-function whitespace.
+                if prev_structural_line and next_structural_line:
+                    skip_removal = True
+
             if not skip_removal:
                 to_remove.add(idx)
     new_lines = [ln for i, ln in enumerate(lines) if i not in to_remove]

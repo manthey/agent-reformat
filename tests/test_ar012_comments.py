@@ -219,3 +219,66 @@ class TestAR012ImportProtection:
         _, after = run_fix(tmp_path, src)
         # Blank line after from import must NOT be removed
         assert 'from os import path\n\n#' in after
+
+
+class TestAR012ModuleLevelBlanks:
+    """Test that blank lines separating module-level structural elements are preserved.
+
+    These test cases cover the bug where AR012 incorrectly removed blank lines
+    between top-level functions/classes when separated by section header comments.
+    See: https://github.com/org/repo/issue_xxx
+    """
+
+    def test_blanks_between_functions_with_section_header(self, tmp_path: Path) -> None:
+        """Blank lines after a section header before next def should be preserved."""
+        src = """def foo():
+    return True
+
+
+# Validators
+
+@decorator
+def bar():
+    pass
+"""
+        _, after = run_fix(tmp_path, src)
+        # The blank lines around the section header must be preserved
+        assert '\n# Validators\n\n' in after or '# Validators\n@decorator\ndef bar' in after
+        # Ensure decorator is not joined to comment
+        assert '@decorator' in after
+        assert 'def bar()' in after
+        # Don't collapse all spacing - should keep blanks preserved
+        assert '\n\n# Validators' in after or ('\ndef bar:' in after), \
+            f'Blanks between structural elements were incorrectly removed. Got:\n{after}'
+
+    def test_blanks_after_module_comment_header(self, tmp_path: Path) -> None:
+        """Blank line after module-level comment header before @decorator should be preserved."""
+        src = ('def foo():\n'
+               '    pass\n'
+               '\n'
+               '# Section\n'
+               '\n'
+               '@decorator\n'
+               'def bar():\n'
+               '    pass')
+        _, after = run_fix(tmp_path, src)
+        # The blank after the comment header must not be removed
+        assert '# Section\n\n@' in after or '# Section\n@decorator' in after
+        # Critically: @decorator and def should still be on separate lines
+        assert '@decorator\ndef bar()' in after, \
+            f'Section header blank removal broke structure. Got:\n{after}'
+
+    def test_large_image_pattern_preserved(self, tmp_path: Path) -> None:
+        """Test the exact pattern from large_image repo that was broken."""
+        src = ('def metadataSearchHandler(*args, **kwargs):\n'
+               '    return True\n\n\n'
+               '# Validators\n\n'
+               '@decorator\ndef validateBoolean(doc):\n    pass\n')
+
+        _, after = run_fix(tmp_path, src)
+        # Blanks between the function body and section header must be preserved
+        # (at least one blank line should remain)
+        assert '# Validators' in after
+        # The @decorator and def lines should be on separate lines (not joined)
+        assert '@decorator\ndef validateBoolean' in after, \
+            f'Decorators improperly collapsed. Got:\n{after}'
