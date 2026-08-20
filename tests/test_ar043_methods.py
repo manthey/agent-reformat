@@ -102,3 +102,41 @@ class TestStrictSubsetBehavior:
               '\n\r\n  det _h(): pass\n'
         prev, result = run_hook(tmp_path, src)
         assert '_h' in result or '_helper' in result
+
+
+class TestAttributeAccessRegression:
+    """Regression test: Attribute.attr tracking should not break public class detection."""
+
+    def test_public_class_method_via_attr_access_kept(self, tmp_path: Path) -> None:
+        """Method accessed via obj.method() in a class listed in __all__ keeps underscore.
+
+        This is a regression test for a bug where the class definition matching
+        only checked for 'class {name}: ' (with trailing space) and failed to match
+        'class {name}:' (without trailing space), causing public class methods
+        to be incorrectly stripped when the class was in __all__.
+        """
+        src = """__all__ = ['PublicClass']
+
+class PublicClass:
+    def _helper(self):
+        pass
+
+obj = PublicClass()
+print(obj._helper)
+"""
+        prev, result = run_hook(tmp_path, src)
+        assert '_helper' in result  # Must keep underscore for public class
+
+    def test_public_class_no_trailing_space_kept(self, tmp_path: Path) -> None:
+        """Class definition without trailing space after colon is matched."""
+        src = """__all__ = ['MyClass']
+
+class MyClass:
+    def _internal(self):
+        return 42
+
+c = MyClass()
+assert c._internal() == 42
+"""
+        prev, result = run_hook(tmp_path, src)
+        assert '_internal' in result  # Must keep underscore

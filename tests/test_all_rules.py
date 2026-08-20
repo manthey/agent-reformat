@@ -196,7 +196,37 @@ not_emoji = 'cafe \u00e9   OK'                     # normal unicode -> kept
 
 
 # =============================================================================
-#  noqa protection   (names that must NOT be stripped)
+# =============================================================================
+#  AR043 / AR002 : Explicitly exported class keeps methods (AR043 bugfix)
+# =============================================================================
+__all__ = ['ExportedPublicClass']
+
+class ExportedPublicClass():
+    def _public_helper(self):
+        return 'kept'
+
+obj2 = ExportedPublicClass()
+print(obj2._public_helper)  # Attribute access -> tracked for usage!
+
+
+# =============================================================================
+#  AR043 : Private class method underscore stripping (can be stripped!)
+# =============================================================================
+class _PrivateInternalClass():
+    def _private_impl(self):
+        return 'stripped'
+
+_PrivateInternalClass()._private_impl()  # Attribute usage -> tracked for stripping!
+
+
+# =============================================================================
+#  AR041 : Module var not in __all__ strips underscore (if loaded)
+# =============================================================================
+_not_exported_var = 99
+print(_not_exported_var)  # NOT in __all__, loaded -> stripped by AR041!
+
+
+# noqa protection   (names that must NOT be stripped)
 # =============================================================================
 _noqa_var = 1          # noqa: AR001
 

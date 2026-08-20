@@ -396,7 +396,9 @@ def strip_underscores(filepath, rules, dry_run=False, show=False):  # noqa: C901
                 for cn, pub in class_is_public.items():
                     if pub:
                         for lt in source.splitlines()[:lineno - 1]:
-                            if f'class {cn}(' in lt or f'class {cn}: ' in lt:
+                            if (f'class {cn}(' in lt or
+                                    f'class {cn}: ' in lt or
+                                    f'class {cn}:' in lt):
                                 cls_found = True
                                 break
                 if cls_found:
