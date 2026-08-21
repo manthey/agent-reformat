@@ -145,7 +145,12 @@ class TestAR013ComplexScenarios:
     """Test complex scenarios."""
 
     def test_block_with_many_statements_keeps_blanks(self, tmp_path: Path) -> None:
-        """Block with >= min_gap statements but small pair gaps still cleans."""
+        """Block with >= min_gap statements but small pair gaps still cleans.
+
+        When a blank separates two contiguous blocks at the same indent, and
+        either block has >= min_gap statements, preserve ONE visual blank line.
+        One visual blank = two consecutive newlines in Python string.
+        """
         src = """def foo():
     a = 1
     b = 2
@@ -157,8 +162,10 @@ class TestAR013ComplexScenarios:
 """
         _, after = run_fix(tmp_path, src)
         # Inside function: 5 statements at indent 4 -> group of
-        # 5 >= min_gap. Pair-level logic cleans small gaps anyway.
-        assert 'b = 2\n    c = 3' in after
+        # 5 >= min_gap. The gap has contiguous blocks {a,b} and {c,d,e}.
+        # Since c-side has 3 >= min_gap, preserve one blank separator.
+        # One blank = two newlines total before c=
+        assert 'b = 2\n\n    c' in after
 
     def test_if_block_few_statements_cleans(self, tmp_path: Path) -> None:
         """Few statements inside if block -> clean up blanks."""
@@ -218,3 +225,34 @@ class TestAR013CheckMode:
         finally:
             sys.stdout = original_stdout
         assert f.read_text() == src, 'Check mode must not modify the file'
+
+
+class TestAR013BugFixMinGapComparison:
+    """Regression for AR013 min_gap comparison bug fix."""
+
+    def test_large_group_blank_preserved(self, tmp_path):
+        """Single blank line preserved between statements in large group.
+
+        When there are >= 3 consecutive same-indent statements (large group),
+        only gaps >= min_gap should be removed. A single blank gap (gap=1 <
+        min_gap=3) should NOT be removed.
+        """
+        src = (
+            'class LazyClass(dict):\n'
+            '    def __init__(self) -> None:\n'
+            '        self.x = 1\n'
+            '        self.y = 2\n'
+            '        self.z = 3\n'
+            '\n'
+            '        self.a = 4\n'
+            '        self.b = 5\n'
+        )
+        _, after = run_fix(tmp_path, src)
+        lines = after.split('\n')
+        for i, line in enumerate(lines):
+            if 'self.z' in line:
+                nxt = lines[i + 1]
+                assert not nxt.strip(), (
+                    f'Line {i+2} should be blank but has: {nxt!r}'
+                )
+                break

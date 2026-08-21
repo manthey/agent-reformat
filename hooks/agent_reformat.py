@@ -944,13 +944,39 @@ def group_same_indent(stmts, lines):
     return groups
 
 
+def count_contiguous_before(group, si):
+    """Count consecutive (by line number) entries in group ending at position si."""
+    if si == 0:
+        return 1
+    base_line = group[si][0]
+    count = 1
+    for j in range(si - 1, -1, -1):
+        if group[j][0] == base_line - (si - j):
+            count += 1
+        else:
+            break
+    return count
+
+
+def count_contiguous_after(group, si):
+    """Count consecutive (by line number) entries in group starting from position si."""
+    base_line = group[si][0]
+    count = 1
+    for j in range(si + 1, len(group)):
+        if group[j][0] == base_line + (j - si):
+            count += 1
+        else:
+            break
+    return count
+
+
 def remove_empty_for_short_groups(groups_by_indent, min_gap, lines, protected):
     """Return blank line indices to remove for statement groups/pairs.
 
     Processes two types of removals:
       1. Short groups (< min_gap entries): all internal blanks removed
-      2. Pairs within large groups where blank count < min_gap: those specific
-         blank lines are removed even if the containing group is larger.
+      2. Pairs within large groups where BOTH sides have < min_gap contiguous
+         statements: those specific blank lines are removed.
     """
     to_remove: set[int] = set()
     for grp_entries in groups_by_indent:
@@ -962,22 +988,33 @@ def remove_empty_for_short_groups(groups_by_indent, min_gap, lines, protected):
                     if (lines[blank_idx].strip() == '' and
                             blank_idx not in protected):
                         to_remove.add(blank_idx)
-        else:  # Large group - still check individual pairs for small gaps
+        else:  # Large group - check each pair's gaps using contiguous stmt counts
             for si in range(len(grp_entries) - 1):
                 line_a, _ = grp_entries[si]
                 line_b, _ = grp_entries[si + 1]
-                # Count actual blank lines between this pair.
-                # If gap has <min_gap blanks, remove them. This allows AR013 to
-                # clean up short gaps even in larger same-indent blocks.
-                g = list(range(line_a + 1, line_b))
-                blank_idx_count = sum(
-                    1 for k in g if lines[k].strip() == ''
-                )
-                if blank_idx_count < min_gap:
-                    for blank_idx in range(line_a + 1, line_b):
-                        if (lines[blank_idx].strip() == '' and
-                                blank_idx not in protected):
-                            to_remove.add(blank_idx)
+                gap_lines = list(range(line_a + 1, line_b))
+                if not gap_lines:
+                    continue
+                # Count contiguous statements on each side of THIS gap
+                before_count = count_contiguous_before(grp_entries, si)
+                after_count = count_contiguous_after(grp_entries, si + 1)
+                # Check for blanks in the gap (excluding protected ones)
+                blanks_in_gap = [
+                    idx for idx in range(line_a + 1, line_b)
+                    if lines[idx].strip() == '' and idx not in protected
+                ]
+                if not blanks_in_gap:
+                    continue
+                # If either side 003c min_gap, remove all blanks in gap
+                # If NOT (both sides minimal), preserve one blank separator
+                if before_count < min_gap and after_count < min_gap:
+                    # Remove all blanks in this gap
+                    to_remove.update(blanks_in_gap)
+                else:
+                    # Otherwise keep first blank as separator, remove rest.
+                    for i, idx in enumerate(blanks_in_gap):
+                        if i > 0:
+                            to_remove.add(idx)
     return to_remove
 
 
