@@ -12,7 +12,6 @@ def run_fix(tmp_path: Path, source_code: str) -> tuple[str, str]:
     """Run agent-reformat in fix mode on a temp file. Returns (original, modified)."""
     f = tmp_path / 'test.py'
     f.write_text(source_code)
-
     original_stdout = sys.stdout
     captured = io.StringIO()
     try:
@@ -285,7 +284,6 @@ class TestAR014CheckMode:
         src = '@dec1\n\n@dec2\ndef foo():\n    pass\n'
         f = tmp_path / 'test.py'
         f.write_text(src)
-
         captured_out = io.StringIO()
         original_stdout = sys.stdout
         try:

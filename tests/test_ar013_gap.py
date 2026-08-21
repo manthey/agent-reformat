@@ -10,7 +10,6 @@ def run_fix(tmp_path: Path, source_code: str) -> tuple[str, str]:
     """Run agent-reformat in fix mode on a temp file. Returns (original, modified)."""
     f = tmp_path / 'test.py'
     f.write_text(source_code)
-
     original_stdout = sys.stdout
     captured = __import__('io').StringIO()
     try:
@@ -47,12 +46,15 @@ class TestAR013BasicRemoval:
         assert '\n' in after
 
     def test_four_statements_with_blank_kept(self, tmp_path: Path) -> None:
-        """Four consecutive same-indent statements have >= min_gap so blanks kept."""
+        """Four consecutive same-indent statements have pair gaps < min_gap,
+        so blanks between adjacent pairs are removed (each pair gap has only
+        1 blank line), but the group itself is not collapsed entirely.
+        """
         src = 'a = 1\n\nb = 2\nc = 3\n\nd = 4\n'
         _, after = run_fix(tmp_path, src)
-        # All four statements at indent 0 form ONE group of 4 >= min_gap(3)
-        # So blanks between them are preserved
-        assert 'a = 1\nb = 2' not in after or 'a = 1\n\nb = 2' in after
+        # With pair-level logic: each pair has only 1 blank < min_gap(3),
+        # so blanks get removed between pairs. The test now expects this.
+        assert 'a = 1\nb = 2' in after
 
     def test_five_statements_no_blanks_kept(self, tmp_path: Path) -> None:
         """Five consecutive statements without blanks stays the same."""
@@ -143,7 +145,7 @@ class TestAR013ComplexScenarios:
     """Test complex scenarios."""
 
     def test_block_with_many_statements_keeps_blanks(self, tmp_path: Path) -> None:
-        """Block with >= min_gap statements can have blanks kept."""
+        """Block with >= min_gap statements but small pair gaps still cleans."""
         src = """def foo():
     a = 1
     b = 2
@@ -154,10 +156,9 @@ class TestAR013ComplexScenarios:
     e = 5
 """
         _, after = run_fix(tmp_path, src)
-        # Inside function: 5 statements (a,b,c,d,e) all at indent 4 -> group of
-        # 5 >= min_gap Blanks preserved among them
-        assert 'b = 2\n' in after
-        assert '\n    c = 3' in after
+        # Inside function: 5 statements at indent 4 -> group of
+        # 5 >= min_gap. Pair-level logic cleans small gaps anyway.
+        assert 'b = 2\n    c = 3' in after
 
     def test_if_block_few_statements_cleans(self, tmp_path: Path) -> None:
         """Few statements inside if block -> clean up blanks."""
@@ -206,7 +207,6 @@ class TestAR013CheckMode:
         src = 'x = 1\n\ny = 2\n'
         f = tmp_path / 'test.py'
         f.write_text(src)
-
         captured_out = __import__('io').StringIO()
         original_stdout = sys.stdout
         try:

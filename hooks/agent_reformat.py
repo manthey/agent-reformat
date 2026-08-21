@@ -31,9 +31,7 @@ expand_codes = rules.expand_codes
 get_rule_group = rules.get_rule_group
 read_max_gap = rules.read_max_gap
 read_comment_max = rules.read_comment_max
-
 NESTED_FUNC_KIND = 'nested_func'
-
 SUPP_EMOJI_RANGES = [
     (0x1F300, 0x1F9FF),  # Misc symbols, emoticons, transport
     (0x1FA00, 0x1FAFF),  # Chess, shapes, symbols extended
@@ -53,7 +51,6 @@ BMP_PATTERNS = [
     '\u2022\u2023\u2043',  # Fancy bullets
 ]
 bmp_re = re.compile('|'.join(f'[{p}]' for p in BMP_PATTERNS))
-
 MODULE_STRUCTURAL_PREFIXES = (
     'def ',   # function definition
     'class ',  # class definition
@@ -337,7 +334,6 @@ def strip_underscores(filepath, rules, dry_run=False, show=False):  # noqa: C901
     # Collect export info for AR04x rules
     all_defined, exported_set = collect_exported_names(tree)
     class_is_public = collect_class_exports(tree)
-
     replacements = {}
     violations = []
 
@@ -732,7 +728,6 @@ def fix_blanks_ar012(source: str) -> tuple[str, set[int]]:  # noqa: C901
             continue
         is_before_comment = (next_content_line and next_content_line in comment_lines)
         is_after_comment = (prev_content_line and prev_content_line in comment_lines)
-
         if is_before_comment or is_after_comment:
             # Protection against overzealous comment-adjacent blank removal.
             # If a highly indented comment (e.g. an inner function's
@@ -740,23 +735,16 @@ def fix_blanks_ar012(source: str) -> tuple[str, set[int]]:  # noqa: C901
             # outer scope, we must NOT collapse it.
 
             target_blank_indent = get_indent_level(line)  # indent of this specific blank line
-
             prev_lno = prev_content_line - 1 if prev_content_line else None
             next_lno = next_content_line - 1 if next_content_line else None
-
             prev_content_indent = get_indent_level(lines[prev_lno]) if prev_lno is not None else -1
             next_content_indent = get_indent_level(lines[next_lno]) if next_lno is not None else -1
-
             target_blank_indent = get_indent_level(line)
-
             prev_lno = prev_content_line - 1 if prev_content_line else None
             next_lno = next_content_line - 1 if next_content_line else None
-
             prev_content_indent = get_indent_level(lines[prev_lno]) if prev_lno is not None else -1
             next_content_indent = get_indent_level(lines[next_lno]) if next_lno is not None else -1
-
             skip_removal = False
-
             # Rule 1: Scope boundary protection. If this blank line is at a
             # lower indent (e.g. module level) but surrounds content that is
             # heavily indented (inner scope comments), it acts as an external
@@ -840,7 +828,7 @@ def find_string_lines(source):
     return out
 
 
-def collect_stmt_starts(source, lines, string_lines):
+def collect_stmt_starts(source, lines, string_lines):  # noqa: C901
     """Walk AST and collect (line0, indent) for statement nodes.
 
     Also returns import_line_numbers to allow AR013 to protect blanks around imports.
@@ -848,20 +836,37 @@ def collect_stmt_starts(source, lines, string_lines):
     tree = ast.parse(source)
     out: list[tuple[int, int]] = []
     import_lines: set[int] = set()  # 0-based line numbers that are imports
+    # Build a set of (start_line_1based, end_line_1based) for truly multiline
+    # STRING tokens. These mark actual multi-line string content ranges.
+    multiline_string_ranges: list[tuple[int, int]] = []
+    try:
+        import tokenize as _tokenize  # type: ignore[import-untyped]
+        for tok in _tokenize.generate_tokens(io.StringIO(source).readline):
+            if tok.type == _tokenize.STRING:
+                start_ln = tok.start[0]  # 1-based
+                end_ln = tok.end[0]     # 1-based
+                if end_ln > start_ln:   # only multi-line
+                    multiline_string_ranges.append((start_ln, end_ln))
+    except ValueError:
+        pass  # If tokenization fails, just don't protect any ranges
 
     def visit(node):
         if isinstance(node, STMT_TYPES_KW):
             ln = getattr(node, 'lineno', None)
             if ln is not None:
                 ln0 = ln - 1
-                # Skip statements touching string tokens (e.g., around
-                # multi-line strings) so their blank lines are not handled
-                # as group gaps.  `off` is a small offset around the
-                # statement's own line (ln0), not an absolute line index.
-                skip = any(
-                    ln0 + off in string_lines
-                    for off in (-2, -1, 0, 1, 2)
-                )
+                # Skip statements that fall INSIDE a multi-line STRING range.
+                # We use actual token boundaries (start_line..end_line) rather
+                # than fixed offset checks to avoid false positives where:
+                #   - the statement's own arguments are STRING literals
+                #     (e.g., events.bind('data.process', ...))
+                #   - adjacent statements happen to use STRING arguments
+                in_multiline = False
+                for s, e in multiline_string_ranges:
+                    if s <= ln0 + 1 <= e:  # 1-based check
+                        in_multiline = True
+                        break
+                skip = in_multiline
                 if not skip:
                     out.append((ln0, get_indent_level(lines[ln0])))
                     # Track import statements separately
@@ -883,7 +888,6 @@ def find_protected_blanks(source, tree):
     """Find blank line indices that must be preserved."""
     lines = source.split('\n')
     protected: set[int] = set()
-
     for node in ast.walk(tree):
         if not isinstance(node, (ast.FunctionDef,
                                  ast.AsyncFunctionDef,
@@ -941,18 +945,39 @@ def group_same_indent(stmts, lines):
 
 
 def remove_empty_for_short_groups(groups_by_indent, min_gap, lines, protected):
-    """Return blank line indices to remove for short statement groups."""
+    """Return blank line indices to remove for statement groups/pairs.
+
+    Processes two types of removals:
+      1. Short groups (< min_gap entries): all internal blanks removed
+      2. Pairs within large groups where blank count < min_gap: those specific
+         blank lines are removed even if the containing group is larger.
+    """
     to_remove: set[int] = set()
     for grp_entries in groups_by_indent:
-        if len(grp_entries) >= min_gap:
-            continue
-        for si in range(len(grp_entries) - 1):
-            line_a, _ = grp_entries[si]
-            line_b, _ = grp_entries[si + 1]
-            for blank_idx in range(line_a + 1, line_b):
-                if (lines[blank_idx].strip() == '' and
-                        blank_idx not in protected):
-                    to_remove.add(blank_idx)
+        if len(grp_entries) < min_gap:  # Short group - process all pair gaps
+            for si in range(len(grp_entries) - 1):
+                line_a, _ = grp_entries[si]
+                line_b, _ = grp_entries[si + 1]
+                for blank_idx in range(line_a + 1, line_b):
+                    if (lines[blank_idx].strip() == '' and
+                            blank_idx not in protected):
+                        to_remove.add(blank_idx)
+        else:  # Large group - still check individual pairs for small gaps
+            for si in range(len(grp_entries) - 1):
+                line_a, _ = grp_entries[si]
+                line_b, _ = grp_entries[si + 1]
+                # Count actual blank lines between this pair.
+                # If gap has <min_gap blanks, remove them. This allows AR013 to
+                # clean up short gaps even in larger same-indent blocks.
+                g = list(range(line_a + 1, line_b))
+                blank_idx_count = sum(
+                    1 for k in g if lines[k].strip() == ''
+                )
+                if blank_idx_count < min_gap:
+                    for blank_idx in range(line_a + 1, line_b):
+                        if (lines[blank_idx].strip() == '' and
+                                blank_idx not in protected):
+                            to_remove.add(blank_idx)
     return to_remove
 
 
@@ -1074,7 +1099,6 @@ def fix_blanks_ar013(source, min_gap=3):
     to_remove = remove_empty_for_short_groups(
         groups_by_indent, min_gap, lines, protected,
     )
-
     new_lines = [
         ln for idx, ln in enumerate(lines) if idx not in to_remove
     ]
@@ -1317,7 +1341,6 @@ def run(cli_args=None):
                         help='Comma-separated rule codes (e.g. AR001,AR012). '
                              'Pass "AR" to enable all rules. Overrides shorthands.')
     args = parser.parse_args(cli_args)
-
     cli_raw = set()
     if args.rules:
         for r in args.rules.replace(';', ',').split(','):
@@ -1356,7 +1379,6 @@ def run(cli_args=None):
     # Resolve config options from pyproject.toml / tox.ini
     gap = read_max_gap(args.blank_lines_gap, cfg_path)
     comment_len = read_comment_max(args.comment_lines_max, cfg_path)
-
     for filepath in args.files:
         if not str(filepath).endswith('.py'):
             continue

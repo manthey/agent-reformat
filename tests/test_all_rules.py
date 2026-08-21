@@ -249,7 +249,6 @@ def run(tmp_path: Path):
     """
     src_file = tmp_path / 'messy.py'
     src_file.write_text(MESSY_SOURCE, encoding='utf-8')
-
     captured = io.StringIO()
     original = sys.stdout
     try:

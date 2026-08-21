@@ -249,7 +249,6 @@ def rules_from_tox(path: str | Path) -> set[str] | None:
     cp = configparser.ConfigParser()
     cp.read(str(ini_path))
     sec_name = 'agent-reformat'
-
     if sec_name not in cp:
         return None
     section = cp[sec_name]

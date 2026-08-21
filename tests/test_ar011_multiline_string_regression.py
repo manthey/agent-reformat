@@ -22,7 +22,6 @@ def run_fix(tmp_path: Path, source_code: str) -> tuple[str, str]:
     """Run agent-reformat fix mode on a temp file. Returns (original, modified)."""
     f = tmp_path / 'test.py'
     f.write_text(source_code)
-
     original_stdout = sys.stdout
     captured = __import__('io').StringIO()
     try:
@@ -40,7 +39,6 @@ def run_check(tmp_path: Path, source_code: str) -> tuple[str, int]:
     """Run agent-reformat in check mode. Returns (stdout, rc). Source untouched."""
     f = tmp_path / 'test.py'
     f.write_text(source_code)
-
     original_stdout = sys.stdout
     captured = __import__('io').StringIO()
     try:

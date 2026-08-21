@@ -12,7 +12,6 @@ def run_fix(tmp_path: Path, source_code: str) -> tuple[str, str]:
     """Run agent-reformat fix mode on a temp file. Returns (original, modified)."""
     f = tmp_path / 'test.py'
     f.write_text(source_code)
-
     original_stdout = sys.stdout
     captured = io.StringIO()
     try:
@@ -30,7 +29,6 @@ def check_fix(tmp_path: Path, src: str) -> tuple[str, int]:
     """Run agent-reformat in check mode. Returns (stdout, rc). Source untouched."""
     f = tmp_path / 'test.py'
     f.write_text(src)
-
     original_stdout = sys.stdout
     captured = io.StringIO()
     try:
@@ -293,7 +291,6 @@ class TestAR011CheckMode:
         src = 'if True:\n\n    pass\n'
         f = tmp_path / 'test.py'
         f.write_text(src)
-
         captured_out = io.StringIO()
         original_stdout = sys.stdout
         try:

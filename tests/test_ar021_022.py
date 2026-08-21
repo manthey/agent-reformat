@@ -33,7 +33,6 @@ def check_for_ar022_violations(tmp_path: Path, source_code: str) -> tuple[str, i
     """Run agent-reformat in check mode for AR022. Returns (stdout, rc)."""
     f = tmp_path / 'test.py'
     f.write_text(source_code)
-
     original_stdout = sys.stdout
     captured_out = StringIO()
     try:

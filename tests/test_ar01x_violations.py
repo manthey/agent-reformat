@@ -15,7 +15,6 @@ def run_fix_with_capture(tmp_path: Path, src: str, rules: tuple[str, ...]) -> tu
     """Run agent-reformat in fix mode and capture output + rc. Returns (stdout, rc)."""
     f = tmp_path / 'test.py'
     f.write_text(src)
-
     original_stdout = sys.stdout
     captured = io.StringIO()
     try:
@@ -40,7 +39,6 @@ class TestAR012ViolationsReported:
         """Blank line before a comment should be detected and reported."""
         src = 'x = 1\n\n# This is a comment\ny = 2\n'
         stdout, rc = run_fix_with_capture(tmp_path, src, ('AR012',))
-
         assert 'AR012' in stdout
         assert rc != 0  # Should indicate violations were found
 
@@ -48,14 +46,12 @@ class TestAR012ViolationsReported:
         """Blank line after a comment should be detected and reported."""
         src = 'x = 1\n# Comment\n\ny = 2\n'
         stdout, rc = run_fix_with_capture(tmp_path, src, ('AR012',))
-
         assert 'AR012' in stdout
 
     def test_no_violations_for_clean_file(self, tmp_path: Path) -> None:
         """Clean file without problematic blanks should not report violations."""
         src = 'x = 1\n# Comment\ny = 2\n'
         stdout, rc = run_fix_with_capture(tmp_path, src, ('AR012',))
-
         assert rc == 0
 
 
@@ -66,14 +62,12 @@ class TestAR013ViolationsReported:
         """Few statements at same indent with blank should trigger violation."""
         src = 'a = 1\n\nb = 2\n'
         stdout, rc = run_fix_with_capture(tmp_path, src, ('AR013',))
-
         assert 'AR013' in stdout
 
     def test_no_violations_for_clean_file(self, tmp_path: Path) -> None:
         """File without violations should not report any."""
         src = 'a = 1\nb = 2\nc = 3\nd = 4\n'  # 4 statements >= min_gap=3
         stdout, rc = run_fix_with_capture(tmp_path, src, ('AR013',))
-
         assert rc == 0
 
 
@@ -84,14 +78,12 @@ class TestAR014ViolationsReported:
         """Blank line between decorator and function should be detected."""
         src = '@decorator\n\ndef func():\n    pass\n'
         stdout, rc = run_fix_with_capture(tmp_path, src, ('AR014',))
-
         assert 'AR014' in stdout
 
     def test_no_violations_for_clean_file(self, tmp_path: Path) -> None:
         """Decorators without blank lines should not report violations."""
         src = '@decorator\ndef func():\n    pass\n'
         stdout, rc = run_fix_with_capture(tmp_path, src, ('AR014',))
-
         assert rc == 0
 
 

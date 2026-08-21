@@ -271,5 +271,4 @@ _inner()
         # AR044 should not have changed since no __all__ means everything
         # public
         after_ar044 = f2.read_text()
-
         assert '_inner' in after_ar044  # Ar044 without __all__ keeps underscores
