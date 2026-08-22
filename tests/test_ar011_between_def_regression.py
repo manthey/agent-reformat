@@ -47,7 +47,7 @@ class TestAR011BetweenDefRegression:
         for i, line in enumerate(lines):
             if 'def another_method' in line and i > 0:
                 assert not lines[i - 1].strip(), \
-                    'Blank line before def another_method was removed!'
+                    'Blank line before def another_method was removed'
                 break
 
     def test_blank_between_module_functions_preserved(self, tmp_path: Path) -> None:
@@ -57,7 +57,7 @@ class TestAR011BetweenDefRegression:
         # Module-level func defs have 2+ blank lines between them for
         # separation
         assert '\n\n\n' in after or '\n\n' in after.replace('pass', ''), \
-            'Blank line between module-level functions was removed!'
+            'Blank line between module-level functions was removed'
 
     def test_blank_after_function_before_module_var_preserved(self, tmp_path: Path) -> None:
         """Blank line after a function body (returning to lower indent) should be preserved."""
@@ -80,7 +80,7 @@ x = 2
                     if 'x =' in lines[j]:
                         break
                 assert found_blank_after or i + 1 >= len(lines) - 1, \
-                    'Blank after function body was removed!'
+                    'Blank after function body was removed'
                 break
 
     def test_blank_between_func_and_class_preserved(self, tmp_path: Path) -> None:
@@ -92,11 +92,11 @@ x = 2
         for i, line in enumerate(lines):
             if 'class Bar' in line and i > 0:
                 assert not lines[i - 1].strip(), \
-                    'Blank before class was removed!'
+                    'Blank before class was removed'
                 break
 
-    def test_nested_scope_outdent_blank_preserved(self, tmp_path: Path) -> None:
-        """When inside a nested block, blank to sibling scope level preserved."""
+    def test_nested_scope_outdent_blank_removed(self, tmp_path: Path) -> None:
+        """When inside a nested block, blank lines to sibling code level are REMOVED."""
         src = """def outer():
     if True:
         x = 1
@@ -108,11 +108,44 @@ x = 2
         lines = after.split('\n')
         for i, line in enumerate(lines):
             if 'y = 2' in line and i > 0:
-                # Blank should be preserved because we're in the same 'outer()'
-                # body
-                assert not lines[i - 1].strip(), \
-                    'Blank between nested block and code at same level was removed!'
+                # Preceding non-blank must be real content (not blank)
+                assert lines[i - 1].strip(), \
+                    'Blank between nested block and code at same level was removed'
                 break
+
+    def test_outdent_blank_lines_removed_in_code_blocks(
+        self, tmp_path: Path,
+    ) -> None:
+        """Blank lines inside code blocks (after outdent) should be removed.
+
+        Regression test for the bug where AR011 incorrectly preserved blank
+        lines between nested blocks and sibling code at the same indent level.
+        Blank lines are unnecessary when in/function-level code blocks have
+        no def/class boundaries to preserve—indent/outdent already indicates
+        the logical section boundary. This matches the issue reported where
+        model_car.py had blank lines after outdent that should be removed.
+        """
+        src = """class ModelCache:
+    def compute(self):
+        if cond:
+            x = 1
+
+
+            y = ""
+
+        z = 3
+
+        return result
+"""
+        _, after = run_fix(tmp_path, src)
+        lines_after = after.split('\n')
+        # After the fix, 'z = 3' should NOT be preceded by a blank line
+        for i, line in enumerate(lines_after):
+            if 'z = 3' in line and i > 0:
+                prev_line = lines_after[i - 1]
+                assert prev_line.strip(), (
+                    f"Blank before 'z = 3' should have been "
+                    f'removed! Prev line: {repr(prev_line)}')
 
     def test_blank_between_nested_classes_inside_method_preserved(
         self, tmp_path: Path,

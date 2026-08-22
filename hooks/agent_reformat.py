@@ -585,20 +585,12 @@ def fix_blanks_ar011(source: str) -> tuple[str, set[int]]:  # noqa: C901
                     if entry_lineno < cur_lin_1based and cur_indent > entry_indent:
                         innermost_containing_scope = (entry_lineno, entry_indent)
                 if innermost_containing_scope is not None:
-                    base_of_innermost = innermost_containing_scope[1]
-                    # If target indent equals the innermost scope's base (or
-                    # goes back TO a level that also contains a definition
-                    # entry), we're just moving to sibling code rather than
-                    # truly exiting out. Only remove blanks when going BELOW
-                    # what contains us.
-                    if next_indent < base_of_innermost:
-                        should_remove = True
+                    should_remove = True
                     # Avoid removing blanks before def/class at lower indent.
-                    if should_remove:
-                        for check_lineno, check_indent in scopes:
-                            if check_indent == next_indent and check_lineno > cur_lin_1based + 1:
-                                should_remove = False
-                                break
+                    for check_lineno, check_indent in scopes:
+                        if check_indent == next_indent and check_lineno > cur_lin_1based + 1:
+                            should_remove = False
+                            break
             if should_remove:
                 for b in range(cur_lin + 1, next_lin):
                     if not lines[b].strip():
@@ -722,7 +714,6 @@ def fix_blanks_ar012(source: str) -> tuple[str, set[int]]:  # noqa: C901
             if lineno and 0 < lineno <= len(lines):
                 return lines[lineno - 1].lstrip().startswith('#!')
             return False
-
         # Preserve blank line immediately after a shebang
         if prev_content_line and is_shebang(prev_content_line):
             continue
@@ -752,7 +743,6 @@ def fix_blanks_ar012(source: str) -> tuple[str, set[int]]:  # noqa: C901
             if (target_blank_indent < prev_content_indent and
                     target_blank_indent < next_content_indent):
                 skip_removal = True
-
             # Rule 2: Multi-blank protection at same depth. Even if indents
             # match, never eat all consecutive blank lines in a row! PEP8
             # requires blanks around top-level defs/classes. This prevents
@@ -762,7 +752,6 @@ def fix_blanks_ar012(source: str) -> tuple[str, set[int]]:  # noqa: C901
                 next_blank_adjacent = ((idx + 1 < len(lines)) and not lines[idx + 1].strip())
                 if (prev_blank_adjacent or next_blank_adjacent):
                     skip_removal = True
-
             # Rule 3: Protect blank lines at module level.
             # If this blank is at indent=0 and both sides reach structural
             # elements, preserve spacing. Prevents incorrect removal between
@@ -796,7 +785,6 @@ def fix_blanks_ar012(source: str) -> tuple[str, set[int]]:  # noqa: C901
                 # not inner-function whitespace.
                 if prev_structural_line and next_structural_line:
                     skip_removal = True
-
             if not skip_removal:
                 to_remove.add(idx)
     new_lines = [ln for i, ln in enumerate(lines) if i not in to_remove]
