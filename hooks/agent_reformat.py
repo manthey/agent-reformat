@@ -642,7 +642,9 @@ def fix_blanks_ar012(source: str) -> tuple[str, set[int]]:  # noqa: C901
     # Collect import statement line numbers.
     # PEP8 requires two blank lines after module-level imports.
     import_lines: set[int] = set()
-    import_end_lines: set[int] = set()  # end_lineno of imports to protect blanks
+    import_end_lines: set[int] = set()
+    # Collect function/class end_line numbers to preserve spacing.
+    func_class_end_lines: set[int] = set()
     try:
         tree = ast.parse(source)
         for node in ast.walk(tree):
@@ -654,6 +656,12 @@ def fix_blanks_ar012(source: str) -> tuple[str, set[int]]:  # noqa: C901
                 if ln_end is not None:
                     for l in range(ln_start, ln_end + 1):
                         import_end_lines.add(l)
+            # Track end_line of functions/classes.
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef,
+                                 ast.ClassDef)):
+                ln_end = getattr(node, 'end_lineno', None)
+                if ln_end is not None:
+                    func_class_end_lines.add(ln_end)
     except SyntaxError:
         pass  # If parsing fails, just don't protect imports
     # Find last non-blank line index for preserving trailing blanks
@@ -707,6 +715,10 @@ def fix_blanks_ar012(source: str) -> tuple[str, set[int]]:  # noqa: C901
             next_content_line in import_lines or
             next_content_line in import_end_lines
         ):
+            continue
+        # Preserve blank lines immediately after function/class definitions.
+        # PEP8 spacing is required regardless of indent level. This prevents
+        if prev_content_line and prev_content_line in func_class_end_lines:
             continue
 
         def is_shebang(lineno):
