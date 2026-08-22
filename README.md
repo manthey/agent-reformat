@@ -14,7 +14,7 @@ This repository provides custom [pre-commit](https://pre-commit.com/) hooks that
 
 ## Rule System
 
-The hook exposes individual rule codes for granular control. You can activate specific, all, or none of the rules via CLI args or config files.
+The hook exposes individual rule codes for granular control. Specific rules can be selected via CLI args or config files.
 
 ### Available Rules
 
@@ -37,9 +37,11 @@ The hook exposes individual rule codes for granular control. You can activate sp
 | `AR043` | Underscore (private)  | Strip underscores from methods in **non-exported classes**.               |
 | `AR044` | Underscore (private)  | Strip single leading underscores from **non-exported nested functions**.  |
 
-The **AR00x** rules strip single leading underscores from identifiers regardless of export status. These are safe for application code or when you know the file isn't a library with an explicit public API.
+The **AR00x** rules strip single leading underscores from identifiers regardless of export status. These are safe for application code that isn't a library with an explicit public API.
 
-The **AR04x** rules only strip single leading underscores from identifiers that are **not exported** via `__all__` or have public exposure. This is preferred for libraries where you want to signal what functions, methods, and variables are official or quasi-hidden.
+The **AR04x** rules only strip single leading underscores from identifiers that are **not exported** via `__all__` or have public exposure. This is preferred for libraries to signal what functions, methods, and variables are official or quasi-hidden.
+
+The rationale behind the **AR01x** rules is directly from PEP8: "Use blank lines in functions, sparingly, to indicate logical sections.". Coding agents clearly do know what the word "sparingly" means. For logical sections, indents, outdents, and comments already indicate this, and having gaps between every statement becomes meaningless.
 
 ### Default Behavior
 
