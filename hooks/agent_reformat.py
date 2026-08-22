@@ -870,8 +870,15 @@ def collect_stmt_starts(source, lines, string_lines):  # noqa: C901
                 if not skip:
                     out.append((ln0, get_indent_level(lines[ln0])))
                     # Track import statements separately
+                    # For multi-line imports, track ALL lines so AR013 can
+                    # correctly protect blanks after the entire import.
                     if isinstance(node, (ast.Import, ast.ImportFrom)):
-                        import_lines.add(ln0)
+                        ln_end = getattr(node, 'end_lineno', None)
+                        if ln_end is not None:
+                            for l in range(ln0, ln_end):
+                                import_lines.add(l)
+                        else:
+                            import_lines.add(ln0)
         for child in getattr(node, '_fields', ()):
             val = getattr(node, child, None)
             if isinstance(val, ast.AST):
