@@ -256,3 +256,104 @@ class TestAR013BugFixMinGapComparison:
                     f'Line {i+2} should be blank but has: {nxt!r}'
                 )
                 break
+
+    def test_multiline_call_continuation_gap(self, tmp_path):
+        """Continuation line gap does not break contiguity of same-indent stmts.
+
+        When a statement starts on one file line and the next same-indent
+        statement follows after exactly two lines (one being an indented
+        continuation of a multi-line function call), the intervening line is
+        NOT a blank separator. The count_contiguous functions must recognise
+        that when all lines between consecutive group entries have indent > target_indent,
+        they are contiguous despite the phantom line-gap.
+
+        This specifically tests the bug fix where statements at the same
+        indent separated by one continuation line (gap=2) were incorrectly
+        treated as non-contiguous because strict adjacent-line-number checks
+        (diff==1) rejected them.
+        """
+        src = (
+            'class Test:\n'
+            '    def test_it(self):\n'
+            '        resp = self.request(\n'
+            '            path="/folder", key="val")\n'
+            '        assert True\n'
+            '\n'
+            '        keyA = "val1"\n'
+            '        keyB = "val2"\n'
+        )
+        f = tmp_path / 'test.py'
+        f.write_text(src)
+        captured_out = __import__('io').StringIO()
+        original_stdout = sys.stdout
+        try:
+            sys.stdout = captured_out
+            try:
+                run_hook([str(f), '--fix', '--rules', 'AR013'])
+            except SystemExit:
+                pass
+        finally:
+            sys.stdout = original_stdout
+        after = f.read_text()
+        # The blank between assert and keyA is removed because each side of
+        # that gap has only < 3 contiguous statements (resp+assert=2,
+        # keyA+keyB=2). The real bug scenario had >=3 on at least one side.
+        assert 'assert True' in after
+        assert '"val1"' in after
+        # Verify the blank was removed between assert and keyA
+        lines = after.split('\n')
+        for i, line in enumerate(lines):
+            if 'assert True' in line:
+                next_line = lines[i + 1]
+                assert next_line.strip(), (
+                    f'Should have removed blank (both sides < min_gap), '
+                    f'but found blank at index {i+1}. got: {next_line!r}'
+                )
+
+    def test_multiline_call_gap_creates_large_group_preserved_blank(self, tmp_path):
+        """Real bug scenario: blank preserved when >=3 contiguous stmts on at least one side.
+
+        The original bug occurred because count_contiguous_before/after used strict
+        line-number adjacency (diff==1) which broke at multi-line call continuation
+        points. A gap of line_0based 529 to 531 (gap=2, one continuation line)
+        was incorrectly treated as non-contiguous.
+
+        This test replicates that: with 4+ same-indent statements where a
+        contiguous chain extends through at least one gap-2 boundary,
+        blank-line removal should NOT occur because both sides of any individual
+        gap have >= min_gap(3) members on the "far" side.
+        """
+        src = (
+            'class Test:\n'
+            '    def test_it(self):\n'
+            '        x1 = 1\n'
+            '        x2 = 2\n'
+            '        resp = self.request(\n'
+            '            key="val")\n'
+            '        assert True\n'
+            '\n'
+            '        x3 = 3\n'
+            '        x4 = 4\n'
+        )
+        f = tmp_path / 'test.py'
+        f.write_text(src)
+        captured_out = __import__('io').StringIO()
+        original_stdout = sys.stdout
+        try:
+            sys.stdout = captured_out
+            try:
+                run_hook([str(f), '--fix', '--rules', 'AR013'])
+            except SystemExit:
+                pass
+        finally:
+            sys.stdout = original_stdout
+        after = f.read_text()
+        lines = after.split('\n')
+        for i, line in enumerate(lines):
+            if 'assert True' in line:
+                nxt = lines[i + 1]
+                assert not nxt.strip(), (
+                    f'Blank should be PRESERVED (has >=3 contig on at least one side). '
+                    f'got: {nxt!r}'
+                )
+                break

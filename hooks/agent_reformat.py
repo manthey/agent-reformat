@@ -951,29 +951,58 @@ def group_same_indent(stmts, lines):
     return groups
 
 
-def count_contiguous_before(group, si):
-    """Count consecutive (by line number) entries in group ending at position si."""
+def count_contiguous_before(
+    group: list[tuple[int, int]], si: int, lines: list[str], target_indent: int,
+) -> int:
+    """Count consecutive entries in group ending at position si.
+
+    'Consecutive' means each entry is at most 2 line-numbers before the next,
+    with all intervening lines having indentation greater than target_indent
+    (i.e., continuation lines within a multi-line construct). Blank or
+    same/less-indented lines break contiguity.
+
+    This handles multi-line function call continuations where the closing paren
+    sits on an indented line, creating a phantom line-number gap between the
+    first and last line of the statement chain.
+    """
     if si == 0:
         return 1
-    base_line = group[si][0]
     count = 1
     for j in range(si - 1, -1, -1):
-        if group[j][0] == base_line - (si - j):
-            count += 1
-        else:
+        gap = group[j + 1][0] - group[j][0]
+        if gap > 2:
             break
+        between_starts = list(range(group[j][0] + 1, group[j + 1][0]))
+        all_cont = all(
+            len(lines[k]) - len(lines[k].lstrip()) > target_indent for k in between_starts
+        ) if between_starts else True
+        if not (gap <= 2 and all_cont):
+            break
+        count += 1
     return count
 
 
-def count_contiguous_after(group, si):
-    """Count consecutive (by line number) entries in group starting from position si."""
-    base_line = group[si][0]
+def count_contiguous_after(
+    group: list[tuple[int, int]], si: int, lines: list[str], target_indent: int,
+) -> int:
+    """Count consecutive entries in group starting from position si.
+
+    'Consecutive' means each entry is at most 2 line-numbers after the previous,
+    with all intervening lines having indentation greater than target_indent.
+    Blank or same/less-indented lines break contiguity.
+    """
     count = 1
     for j in range(si + 1, len(group)):
-        if group[j][0] == base_line + (j - si):
-            count += 1
-        else:
+        gap = group[j][0] - group[j - 1][0]
+        if gap > 2:
             break
+        between_starts = list(range(group[j - 1][0] + 1, group[j][0]))
+        all_cont = all(
+            len(lines[k]) - len(lines[k].lstrip()) > target_indent for k in between_starts
+        ) if between_starts else True
+        if not (gap <= 2 and all_cont):
+            break
+        count += 1
     return count
 
 
@@ -1003,8 +1032,10 @@ def remove_empty_for_short_groups(groups_by_indent, min_gap, lines, protected):
                 if not gap_lines:
                     continue
                 # Count contiguous statements on each side of THIS gap
-                before_count = count_contiguous_before(grp_entries, si)
-                after_count = count_contiguous_after(grp_entries, si + 1)
+                before_count = count_contiguous_before(
+                    grp_entries, si, lines, grp_entries[0][1])
+                after_count = count_contiguous_after(
+                    grp_entries, si + 1, lines, grp_entries[0][1])
                 # Check for blanks in the gap (excluding protected ones)
                 blanks_in_gap = [
                     idx for idx in range(line_a + 1, line_b)
