@@ -891,10 +891,25 @@ def collect_stmt_starts(source, lines, string_lines):  # noqa: C901
     return out, import_lines
 
 
-def find_protected_blanks(source, tree):
+def find_protected_blanks(source, tree):  # noqa: C901
     """Find blank line indices that must be preserved."""
     lines = source.split('\n')
     protected: set[int] = set()
+
+    def is_in_nested_func(line_lineno, container_node):
+        nested_ranges: list[tuple[int, int]] = []
+        for child in ast.walk(container_node):
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)) and \
+               hasattr(child, 'lineno'):
+                fl = getattr(child, 'lineno', None)
+                fend = getattr(child, 'end_lineno', float('inf'))
+                if fl is not None:
+                    nested_ranges.append((fl, fend))
+        # Check overlap
+        for n_start, n_end in nested_ranges:
+            if n_start <= line_lineno < n_end:
+                return True
+        return False
     for node in ast.walk(tree):
         if not isinstance(node, (ast.FunctionDef,
                                  ast.AsyncFunctionDef,
@@ -919,6 +934,23 @@ def find_protected_blanks(source, tree):
         if end_ln is None:
             continue
         end_0 = end_ln - 1
+        # For module-level classes: protect blanks within the class body,
+        # but only those NOT inside nested function/method bodies.
+        # Class-body blanks preserve attribute-field spacing; func blanks
+        # follow normal min_gap logic.
+        if isinstance(node, ast.ClassDef):
+            # Get indent of the class definition to ensure it's module-level
+            class_line = lines[top_0]
+            class_indent = len(class_line) - len(class_line.lstrip()) if class_line.strip() else 0
+            for blank_i in range(top_0 + 1, end_0):
+                line_num_1based = blank_i + 1  # Convert to 1-based
+                is_blank = not lines[blank_i].strip()
+                inside_method = not (class_indent == 0 and
+                                     is_blank and
+                                     not is_in_nested_func(line_num_1based, node))
+                if is_blank and not inside_method:
+                    protected.add(blank_i)
+        # Protect trailing blanks after the definition.
         for blank_i in range(end_0 + 1, len(lines)):
             if lines[blank_i].strip():
                 break
