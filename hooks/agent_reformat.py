@@ -549,14 +549,19 @@ def fix_blanks_ar011(source: str) -> tuple[str, set[int]]:  # noqa: C901
     # functions. If parsing fails (e.g., partial code), scopes will be empty
     # but indent entry logic still works correctly.
     scopes: list[tuple[int, int]] = []
+    # Collect all function/class end lines to preserve blanks after them.
+    end_lines_of_defs: set[int] = set()   # 1-based line numbers of def/class ends
     try:
         tree = ast.parse(source)
         for node in ast.walk(tree):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef,
                                  ast.ClassDef)):
                 lineno = getattr(node, 'lineno', None)
+                end_ln = getattr(node, 'end_lineno', None)
                 if lineno is not None and 0 < lineno <= len(lines):
                     scopes.append((lineno, get_indent_level(lines[lineno - 1])))
+                if end_ln is not None:
+                    end_lines_of_defs.add(end_ln)
     except SyntaxError:
         pass  # If parsing fails, continue without scope info
     to_remove: set[int] = set()
@@ -594,6 +599,10 @@ def fix_blanks_ar011(source: str) -> tuple[str, set[int]]:  # noqa: C901
             if should_remove:
                 for b in range(cur_lin + 1, next_lin):
                     if not lines[b].strip():
+                        # Protect one blank after any def/class to preserve
+                        # style between inner defs and outer code (pep8).
+                        if b in end_lines_of_defs:
+                            continue
                         to_remove.add(b)
     # Preserve trailing blanks (after the last non-blank line)
     last_nbl_lin = non_blank_lines[-1][0] if non_blank_lines else -1
@@ -951,7 +960,13 @@ def find_protected_blanks(source, tree):  # noqa: C901
                 if is_blank and not inside_method:
                     protected.add(blank_i)
         # Protect trailing blanks after the definition.
-        for blank_i in range(end_0 + 1, len(lines)):
+        # Also protect ONE blank line immediately after any def/class
+        # (separating it from following code is a common style pattern).
+        for blank_i in range(end_0 + 1, end_0 + 2):
+            if blank_i < len(lines) and not lines[blank_i].strip():
+                protected.add(blank_i)
+        # Continue protecting consecutive blanks beyond that.
+        for blank_i in range(end_0 + 2, len(lines)):
             if lines[blank_i].strip():
                 break
             protected.add(blank_i)
