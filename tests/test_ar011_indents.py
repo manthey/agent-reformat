@@ -360,3 +360,20 @@ def main():
         src = 'if True:\n    pass\n\ndef foo():\n    pass\n'
         _, after = run_fix(tmp_path, src)
         assert after == src
+
+    def test_blank_lines_between_from_imports_preserved(self, tmp_path: Path) -> None:
+        """Blank lines between adjacent imports should not be removed by AR011.
+
+        Regression test for AR011 incorrectly removing blank lines between
+        'from ... import' statements when the previous import spans multiple
+        lines (the continuation lines have extra indentation, creating a
+        phantom outdent transition that ate the following blank line).
+        """
+        src = ('def my_func():\n'
+               '    from module_a import A\n'
+               '    from module_b.thing import OneLongNameThatSpansAcrossLineBe\n'
+               '\n'
+               '    from .local_module import Foo  # blank before this MUST stay!\n')
+        _, after = run_fix(tmp_path, src)
+        # Preserve the blank line before the next import statement.
+        assert '\n\n    from .local_module import Foo' in after

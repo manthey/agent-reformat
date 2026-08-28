@@ -549,6 +549,8 @@ def fix_blanks_ar011(source: str) -> tuple[str, set[int]]:  # noqa: C901
     # functions. If parsing fails (e.g., partial code), scopes will be empty
     # but indent entry logic still works correctly.
     scopes: list[tuple[int, int]] = []
+    # Collect import stmts to protect blank lines between imports.
+    import_end_lines: set[int] = set()     # 1-based lines where imports end
     # Collect all function/class end lines to preserve blanks after them.
     end_lines_of_defs: set[int] = set()   # 1-based line numbers of def/class ends
     try:
@@ -562,6 +564,12 @@ def fix_blanks_ar011(source: str) -> tuple[str, set[int]]:  # noqa: C901
                     scopes.append((lineno, get_indent_level(lines[lineno - 1])))
                 if end_ln is not None:
                     end_lines_of_defs.add(end_ln)
+            # Collect all lines of import statements to protect blank spacing.
+            elif isinstance(node, (ast.Import, ast.ImportFrom)):
+                ln_end = getattr(node, 'end_lineno', None)
+                if ln_end is not None and node.lineno is not None:
+                    for l in range(node.lineno, ln_end + 1):
+                        import_end_lines.add(l)
     except SyntaxError:
         pass  # If parsing fails, continue without scope info
     to_remove: set[int] = set()
@@ -575,6 +583,9 @@ def fix_blanks_ar011(source: str) -> tuple[str, set[int]]:  # noqa: C901
             if cur_indent > prev_indent:
                 for b in range(prev_lin + 1, cur_lin):
                     if not lines[b].strip():
+                        # Protect blanks after import statements.
+                        if prev_lin + 1 in import_end_lines:
+                            continue
                         to_remove.add(b)
         if next_nbl is not None:
             next_lin, next_indent = next_nbl
@@ -602,6 +613,10 @@ def fix_blanks_ar011(source: str) -> tuple[str, set[int]]:  # noqa: C901
                         # Protect one blank after any def/class to preserve
                         # style between inner defs and outer code (pep8).
                         if b in end_lines_of_defs:
+                            continue
+                        # Protect blank lines after import statements.
+                        # Avoids eating blanks via outdent logic.
+                        if cur_lin + 1 in import_end_lines:
                             continue
                         to_remove.add(b)
     # Preserve trailing blanks (after the last non-blank line)
