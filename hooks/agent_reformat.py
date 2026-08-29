@@ -852,6 +852,48 @@ def find_string_lines(source):
     return out
 
 
+def find_blank_lines_between_same_indent_comments(lines):
+    """Find blank line indices that sit between two comments at the same indent.
+
+    These blank lines separate comment groups at a given indent level and
+    should be preserved as they provide intentional visual spacing between
+    comment blocks.
+    """
+    protected: set[int] = set()
+    n = len(lines)
+    for i, line in enumerate(lines):
+        if line.strip():  # not a blank line
+            continue
+        # Look backward for the previous non-blank line
+        prev_idx = None
+        for j in range(i - 1, -1, -1):
+            if lines[j].strip():
+                prev_idx = j
+                break
+        if prev_idx is None:
+            continue
+        prev_stripped = lines[prev_idx].lstrip()
+        if not prev_stripped.startswith('#'):
+            continue
+        prev_indent = len(lines[prev_idx]) - len(prev_stripped)
+        # Look forward for the next non-blank line
+        next_idx = None
+        for j in range(i + 1, n):
+            if lines[j].strip():
+                next_idx = j
+                break
+        if next_idx is None:
+            continue
+        next_stripped = lines[next_idx].lstrip()
+        if not next_stripped.startswith('#'):
+            continue
+        next_indent = len(lines[next_idx]) - len(next_stripped)
+        # Only protect if both comments are at the same indent
+        if prev_indent == next_indent:
+            protected.add(i)
+    return protected
+
+
 def collect_stmt_starts(source, lines, string_lines):  # noqa: C901
     """Walk AST and collect (line0, indent) for statement nodes.
 
@@ -1232,6 +1274,10 @@ def fix_blanks_ar013(source, min_gap=3):
         # A blank line after the import (between import and next statement)
         if imp_ln + 1 < len(lines) and not lines[imp_ln + 1].strip():
             protected.add(imp_ln + 1)
+    # Protect blank lines between two comments at the same indent level
+    protected.update(
+        find_blank_lines_between_same_indent_comments(lines),
+    )
     groups_by_indent = group_same_indent(deduped, lines)
     to_remove = remove_empty_for_short_groups(
         groups_by_indent, min_gap, lines, protected,
