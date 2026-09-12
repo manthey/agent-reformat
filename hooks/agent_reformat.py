@@ -1318,7 +1318,7 @@ def has_genuine_emoji(line_text):
 
 def check_comment_line_length(filepath, rules, max_len=79):
     """AR022: Check comment-only lines against max line length. Error only.
-    
+
     Returns list of (lineno, actual_len) tuples for violations.
     """
     file_path = Path(filepath)
@@ -1449,20 +1449,21 @@ def strip_repeated_comments(filepath, rules=frozenset(), dry_run=False, show=Fal
     return violations
 
 
-def format_violation(filepath: str, lineno: int, rule_code: str, 
+def format_violation(filepath: str, lineno: int, rule_code: str,
                      extra: str | None = None) -> str:
     """Format a violation message following pre-commit conventions.
-    
+
     Format: `file:line: code message [fix-hint]`
-    
+
     Args:
         filepath: Path to the file
         lineno: Line number (1-based)
         rule_code: Rule code (e.g., 'AR022')
         extra: Optional extra context (e.g., actual length for AR022)
-    
+
     Returns:
         Formatted violation message
+
     """
     msg = rules.get_rule_message(rule_code)
     fix_hint = rules.get_rule_fix(rule_code)

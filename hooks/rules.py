@@ -9,16 +9,16 @@ RULE_CATALOG: dict[str, dict[str, str]] = {
               'desc': 'Strip single leading underscores from '
                        'modules-level variables.',
               'msg': 'Leading underscore on module-level variable',
-              'fix': 'Remove the leading underscore: `_var` → `var`'},
+              'fix': 'Remove the leading underscore: `_var` -> `var`'},
     'AR002': {'group': 'underscores',
               'desc': 'Strip single leading underscores from '
                        'top-level functions.',
               'msg': 'Leading underscore on top-level function',
-              'fix': 'Remove the leading underscore: `def _func()` → `def func()`'},
+              'fix': 'Remove the leading underscore: `def _func()` -> `def func()`'},
     'AR003': {'group': 'underscores',
               'desc': 'Strip single leading underscores from methods.',
               'msg': 'Leading underscore on method',
-              'fix': 'Remove the leading underscore: `def _method(self)` → `def method(self)`'},
+              'fix': 'Remove the leading underscore: `def _method(self)` -> `def method(self)`'},
     'AR004': {'group': 'underscores',
               'desc': 'Strip single leading underscores from '
                        'nested functions.',
@@ -80,7 +80,7 @@ RULE_CATALOG: dict[str, dict[str, str]] = {
     'AR032': {'group': 'emojis',
               'desc': 'Replace decorative text with plain versions.',
               'msg': 'Decorative text character in source code',
-              'fix': 'Replace decorative chars (✓, ✗) with plain ASCII (+, x).'},
+              'fix': 'Replace decorative check/X marks with plain ASCII (+, x).'},
 }
 GROUPS: dict[str, tuple[str, ...]] = {
     'underscores': ('AR001', 'AR002', 'AR003', 'AR004'),

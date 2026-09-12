@@ -27,7 +27,7 @@ filepath:line: CODE Message — Fix hint
 Example output:
 ```
 myfile.py:42: AR022 Comment line exceeds maximum length [144>79 chars] — Split into multiple shorter comment lines or rewrap.
-myfile.py:15: AR002 Leading underscore on top-level function — Remove the leading underscore: `def _func()` → `def func()`
+myfile.py:15: AR002 Leading underscore on top-level function — Remove the leading underscore: `def _func()` -> `def func()`
 ```
 
 Each violation includes:
@@ -42,9 +42,9 @@ For AR022 (comment line length), the message includes the actual length vs. maxi
 
 | Code   | Feature      | Description                                                                 | Fix Hint |
 |--------|--------------|-----------------------------------------------------------------------------|----------|
-| `AR001` | Underscore   | Strip single leading underscores from **module-level variables**.           | `_var` → `var` |
-| `AR002` | Underscore   | Strip single leading underscores from **top-level functions**.              | `def _func()` → `def func()` |
-| `AR003` | Underscore   | Strip single leading underscores from **class methods**.                    | `def _method(self)` → `def method(self)` |
+| `AR001` | Underscore   | Strip single leading underscores from **module-level variables**.           | `_var` -> `var` |
+| `AR002` | Underscore   | Strip single leading underscores from **top-level functions**.              | `def _func()` -> `def func()` |
+| `AR003` | Underscore   | Strip single leading underscores from **class methods**.                    | `def _method(self)` -> `def method(self)` |
 | `AR004` | Underscore   | Strip single leading underscores from **nested functions**.                 | Remove leading underscore from nested function |
 | `AR011` | Blank lines  | Remove blank lines before indent/outdent statement boundaries.              | Indentation already shows structure; extra blanks are noise |
 | `AR012` | Blank lines  | Remove blank lines immediately adjacent to comments.                        | Comments should be adjacent to the code they describe |
