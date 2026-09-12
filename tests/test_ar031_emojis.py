@@ -166,7 +166,8 @@ class TestAR031CheckMode:
         rc, out, after = run_rule(tmp_path, src, 'AR031')
         assert rc == 1
         assert after == src
-        assert f'{target}:2: AR031 (emojis)' in out
+        assert f'{target}:2: AR031' in out
+        assert 'Emoji character' in out
 
     def test_clean_file_check_mode_no_changes(self, tmp_path: Path) -> None:
         src = 'x = 1\n# just a comment\ny = 2\nz = 3\n'
@@ -180,7 +181,8 @@ class TestAR031CheckMode:
         rc, out, after = run_rule(tmp_path, src, 'AR031')
         assert rc == 1
         assert after == src
-        assert out.count('AR031 (emojis)') >= 2
+        assert out.count('AR031') >= 2
+        assert 'Emoji character' in out
 
 
 class TestAR031VsAR032:
@@ -213,7 +215,8 @@ class TestAR031VsAR032:
         src = '# \u2713 done \U0001F600\nx = 1\n'
         rc, out, after = run_rule(tmp_path, src, 'AR032', fix_mode=True)
         assert rc == 1
-        assert f'{target}:1: AR032 (emojis)' in out
+        assert f'{target}:1: AR032' in out
+        assert 'Decorative text' in out
         assert 'AR031' not in out
         assert after == '# + done \U0001F600\nx = 1\n'
 
@@ -222,6 +225,8 @@ class TestAR031VsAR032:
         src = '# \u2713 done \U0001F600\nx = 1\n'
         rc, out, after = run_rule(tmp_path, src, 'AR031,AR032', fix_mode=True)
         assert rc == 1
-        assert f'{target}:1: AR031 (emojis)' in out
-        assert f'{target}:1: AR032 (emojis)' in out
+        assert f'{target}:1: AR031' in out
+        assert f'{target}:1: AR032' in out
+        assert 'Emoji character' in out
+        assert 'Decorative text' in out
         assert after == '# + done \nx = 1\n'

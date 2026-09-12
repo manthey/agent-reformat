@@ -1317,7 +1317,10 @@ def has_genuine_emoji(line_text):
 
 
 def check_comment_line_length(filepath, rules, max_len=79):
-    """AR022: Check comment-only lines against max line length. Error only."""
+    """AR022: Check comment-only lines against max line length. Error only.
+    
+    Returns list of (lineno, actual_len) tuples for violations.
+    """
     file_path = Path(filepath)
     with open(file_path, encoding='utf-8', newline='') as f:
         source = f.read()
@@ -1328,7 +1331,7 @@ def check_comment_line_length(filepath, rules, max_len=79):
         tokens = list(tokenize.generate_tokens(io.StringIO(source).readline))
     except tokenize.TokenError:
         return []
-    violations = []  # line numbers (1-based)
+    violations = []  # list of (lineno, actual_len) tuples
     seen_lines = set()
     for tok in tokens:
         if tok.type == tokenize.COMMENT:
@@ -1344,8 +1347,9 @@ def check_comment_line_length(filepath, rules, max_len=79):
                 # (i.e., no code before the # on that line)
                 hash_pos = line_text.find('#')
                 if hash_pos >= 0 and not line_text[:hash_pos].strip():
-                    if len(line_text.rstrip()) > max_len:
-                        violations.append(lineno)
+                    actual_len = len(line_text.rstrip())
+                    if actual_len > max_len:
+                        violations.append((lineno, actual_len))
                         seen_lines.add(lineno)
     return violations
 
@@ -1445,6 +1449,34 @@ def strip_repeated_comments(filepath, rules=frozenset(), dry_run=False, show=Fal
     return violations
 
 
+def format_violation(filepath: str, lineno: int, rule_code: str, 
+                     extra: str | None = None) -> str:
+    """Format a violation message following pre-commit conventions.
+    
+    Format: `file:line: code message [fix-hint]`
+    
+    Args:
+        filepath: Path to the file
+        lineno: Line number (1-based)
+        rule_code: Rule code (e.g., 'AR022')
+        extra: Optional extra context (e.g., actual length for AR022)
+    
+    Returns:
+        Formatted violation message
+    """
+    msg = rules.get_rule_message(rule_code)
+    fix_hint = rules.get_rule_fix(rule_code)
+    # Build the main message
+    if extra:
+        main_msg = f'{rule_code} {msg} [{extra}]'
+    else:
+        main_msg = f'{rule_code} {msg}'
+    # Add fix hint if available
+    if fix_hint:
+        return f'{filepath}:{lineno}: {main_msg} — {fix_hint}'
+    return f'{filepath}:{lineno}: {main_msg}'
+
+
 def process_file(args, filepath, effective_rules, und_codes_all,
                  und_private_codes_all,
                  blk_codes_all, cmt_rules_active, emj_codes_all,
@@ -1464,7 +1496,7 @@ def process_file(args, filepath, effective_rules, und_codes_all,
             Path(filepath), all_underscore_rules, not args.fix, args.show,
         ):
             violations_reported.append(
-                (lineno, f'{rule_code} ({get_rule_group(rule_code)})'),
+                format_violation(str(filepath), lineno, rule_code),
             )
     if blk_active:
         for lineno, rule_code in fix_blanks(
@@ -1472,34 +1504,37 @@ def process_file(args, filepath, effective_rules, und_codes_all,
             gap, not args.fix, args.show,
         ):
             violations_reported.append(
-                (lineno, f'{rule_code} ({get_rule_group(rule_code)})'),
+                format_violation(str(filepath), lineno, rule_code),
             )
     if emj_active:
         for lineno, rule_code in strip_emojis(
             Path(filepath), effective_rules, not args.fix, args.show,
         ):
             violations_reported.append(
-                (lineno, f'{rule_code} ({get_rule_group(rule_code)})'),
+                format_violation(str(filepath), lineno, rule_code),
             )
     if cmt_active:
         for ln in strip_repeated_comments(
             Path(filepath), effective_rules, not args.fix, args.show,
         ):
-            violations_reported.append((ln, 'AR021 (comments)'))
+            violations_reported.append(
+                format_violation(str(filepath), ln, 'AR021'),
+            )
     # AR022 is error-only (no auto-fix)
     ar022_active = bool(effective_rules & {'AR022'})
     if ar022_active:
-        for ln in check_comment_line_length(
+        for ln, actual_len in check_comment_line_length(
             Path(filepath), effective_rules, comment_len,
         ):
+            extra = f'{actual_len}>{comment_len} chars'
             violations_reported.append(
-                (ln, 'AR022 (comments)'),
+                format_violation(str(filepath), ln, 'AR022', extra),
             )
     # Print all violations in standard pre-commit format
     if violations_reported:
         changed = True
-        for lineno, desc in sorted(violations_reported):
-            print(f'{filepath}:{lineno}: {desc}')
+        for violation_msg in sorted(violations_reported):
+            print(violation_msg)
     return changed
 
 

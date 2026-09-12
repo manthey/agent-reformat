@@ -16,26 +16,48 @@ This repository provides custom [pre-commit](https://pre-commit.com/) hooks that
 
 The hook exposes individual rule codes for granular control. Specific rules can be selected via CLI args or config files.
 
+### Error Message Format
+
+Violations are reported in standard pre-commit format:
+
+```
+filepath:line: CODE Message — Fix hint
+```
+
+Example output:
+```
+myfile.py:42: AR022 Comment line exceeds maximum length [144>79 chars] — Split into multiple shorter comment lines or rewrap.
+myfile.py:15: AR002 Leading underscore on top-level function — Remove the leading underscore: `def _func()` → `def func()`
+```
+
+Each violation includes:
+- **File and line number** for easy navigation
+- **Rule code** (e.g., AR022) for reference
+- **Clear message** describing what's wrong
+- **Actionable fix hint** telling you exactly how to fix it
+
+For AR022 (comment line length), the message includes the actual length vs. maximum (e.g., `144>79 chars`).
+
 ### Available Rules
 
-| Code   | Feature      | Description                                                                 |
-|--------|--------------|-----------------------------------------------------------------------------|
-| `AR001` | Underscore   | Strip single leading underscores from **module-level variables**.           |
-| `AR002` | Underscore   | Strip single leading underscores from **top-level functions**.              |
-| `AR003` | Underscore   | Strip single leading underscores from **class methods**.                    |
-| `AR004` | Underscore   | Strip single leading underscores from **nested functions**.                 |
-| `AR011` | Blank lines  | Remove blank lines before indent/outdent statement boundaries (not between def/class blocks). |
-| `AR012` | Blank lines  | Remove blank lines immediately adjacent to comments.                        |
-| `AR013` | Blank lines  | Remove blank lines when consecutive statements at same indent are fewer than min_gap. |
-| `AR014` | Blank lines  | Remove blank lines between decorators and their target function/class definition. |
-| `AR021` | Comments     | Remove comment-only lines repeating 4+ identical non-whitespace, non-hexadecimal digit characters. |
-| `AR022` | Comments     | Enforce max line length on **comment-only** lines (error only, no auto-fix). Lines exceeding the configured maximum must be manually rewrapped by users or agents into shorter multi-line comments or shortened entirely.          |
-| `AR031` | Emojis       | Remove emoji characters.                                                    |
-| `AR032` | Emojis       | Replace decorative text with plain versions.                                |
-| `AR041` | Underscore (private)  | Strip single leading underscores from **non-exported variables**.         |
-| `AR042` | Underscore (private)  | Strip single leading underscores from **non-exported functions/methods**. |
-| `AR043` | Underscore (private)  | Strip underscores from methods in **non-exported classes**.               |
-| `AR044` | Underscore (private)  | Strip single leading underscores from **non-exported nested functions**.  |
+| Code   | Feature      | Description                                                                 | Fix Hint |
+|--------|--------------|-----------------------------------------------------------------------------|----------|
+| `AR001` | Underscore   | Strip single leading underscores from **module-level variables**.           | `_var` → `var` |
+| `AR002` | Underscore   | Strip single leading underscores from **top-level functions**.              | `def _func()` → `def func()` |
+| `AR003` | Underscore   | Strip single leading underscores from **class methods**.                    | `def _method(self)` → `def method(self)` |
+| `AR004` | Underscore   | Strip single leading underscores from **nested functions**.                 | Remove leading underscore from nested function |
+| `AR011` | Blank lines  | Remove blank lines before indent/outdent statement boundaries.              | Indentation already shows structure; extra blanks are noise |
+| `AR012` | Blank lines  | Remove blank lines immediately adjacent to comments.                        | Comments should be adjacent to the code they describe |
+| `AR013` | Blank lines  | Remove blank lines when consecutive statements at same indent < min_gap.    | Blank lines only for logical sections, not between every statement |
+| `AR014` | Blank lines  | Remove blank lines between decorators and their target.                     | Decorators must be directly above their target |
+| `AR021` | Comments     | Remove comment-only lines repeating 4+ identical chars.                     | Decorative separators (e.g., `#####`) are noise |
+| `AR022` | Comments     | Enforce max line length on **comment-only** lines (error only, no auto-fix). | Split into multiple shorter lines or rewrap |
+| `AR031` | Emojis       | Remove emoji characters.                                                    | Emojis are not appropriate in source code |
+| `AR032` | Emojis       | Replace decorative text with plain versions.                                | Replace ✓, ✗ with +, x |
+| `AR041` | Underscore   | Strip underscores from **non-exported variables**.                          | Variable not in `__all__`; remove underscore |
+| `AR042` | Underscore   | Strip underscores from **non-exported functions/methods**.                  | Not exported; remove underscore |
+| `AR043` | Underscore   | Strip underscores from methods in **non-exported classes**.                 | Class not exported; remove underscore |
+| `AR044` | Underscore   | Strip underscores from **non-exported nested functions**.                   | Not exported; remove underscore |
 
 The **AR00x** rules strip single leading underscores from identifiers regardless of export status. These are safe for application code that isn't a library with an explicit public API.
 

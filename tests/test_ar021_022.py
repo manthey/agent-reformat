@@ -146,6 +146,8 @@ class TestAR022CommentLength:
         # Line is: "# " + 78 chars = 80 chars total, which exceeds 79
         assert rc == 1, f'Expected error exit code 1, got {rc}. output: {output}'
         assert 'AR022' in output, f'Expected AR022 violation in output. Got: {output}'
+        # Check for new format with length info
+        assert '80>79' in output, f'Expected length info in output. Got: {output}'
 
     def test_long_comment_exactly_at_threshold(self, tmp_path: Path) -> None:
         """A comment-only line exactly 79 chars should NOT be flagged."""
@@ -158,6 +160,7 @@ class TestAR022CommentLength:
         src = 'x=1\n# ' + 'a' * 78 + '\ny=2\nz=3\n'
         output, rc = check_for_ar022_violations(tmp_path, src)
         assert rc == 1
+        assert '80>79' in output
 
     def test_short_comment_does_not_flag(self, tmp_path: Path) -> None:
         """Short comment-only lines should not be flagged."""
@@ -186,3 +189,5 @@ class TestAR022CommentLength:
         output, rc = check_for_ar022_violations(tmp_path, src)
         assert rc == 1
         assert output.count('AR022') >= 2
+        # Each should have length info
+        assert output.count('80>79') >= 2

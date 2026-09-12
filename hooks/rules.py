@@ -7,48 +7,80 @@ from pathlib import Path
 RULE_CATALOG: dict[str, dict[str, str]] = {
     'AR001': {'group': 'underscores',
               'desc': 'Strip single leading underscores from '
-                       'modules-level variables.'},
+                       'modules-level variables.',
+              'msg': 'Leading underscore on module-level variable',
+              'fix': 'Remove the leading underscore: `_var` → `var`'},
     'AR002': {'group': 'underscores',
               'desc': 'Strip single leading underscores from '
-                       'top-level functions.'},
+                       'top-level functions.',
+              'msg': 'Leading underscore on top-level function',
+              'fix': 'Remove the leading underscore: `def _func()` → `def func()`'},
     'AR003': {'group': 'underscores',
-              'desc': 'Strip single leading underscores from methods.'},
+              'desc': 'Strip single leading underscores from methods.',
+              'msg': 'Leading underscore on method',
+              'fix': 'Remove the leading underscore: `def _method(self)` → `def method(self)`'},
     'AR004': {'group': 'underscores',
               'desc': 'Strip single leading underscores from '
-                       'nested functions.'},
+                       'nested functions.',
+              'msg': 'Leading underscore on nested function',
+              'fix': 'Remove the leading underscore from nested function'},
     'AR041': {'group': 'underscores',
               'desc': 'Strip single leading underscores from '
-                       'non-exported variables.'},
+                       'non-exported variables.',
+              'msg': 'Leading underscore on non-exported variable',
+              'fix': 'Variable is not in `__all__`; remove leading underscore'},
     'AR042': {'group': 'underscores',
               'desc': 'Strip single leading underscores from '
-                       'non-exported functions and methods.'},
+                       'non-exported functions and methods.',
+              'msg': 'Leading underscore on non-exported function/method',
+              'fix': 'Function/method is not exported; remove leading underscore'},
     'AR043': {'group': 'underscores',
               'desc': 'Strip single leading underscores from '
-                       'methods in non-exported classes.'},
+                       'methods in non-exported classes.',
+              'msg': 'Leading underscore on method in non-exported class',
+              'fix': 'Class is not exported; remove leading underscore from methods'},
     'AR044': {'group': 'underscores',
               'desc': 'Strip single leading underscores from '
-                       'non-exported nested functions.'},
+                       'non-exported nested functions.',
+              'msg': 'Leading underscore on non-exported nested function',
+              'fix': 'Nested function is not exported; remove leading underscore'},
     'AR011': {'group': 'blanks',
               'desc': 'Remove blank lines before or after indent/'
-                       'outdent statement boundaries.'},
+                       'outdent statement boundaries.',
+              'msg': 'Unnecessary blank line at indent/outdent boundary',
+              'fix': 'PEP8: use blank lines sparingly. Indentation already shows structure.'},
     'AR012': {'group': 'blanks',
-              'desc': 'Remove blank lines immediately before/after comments.'},
+              'desc': 'Remove blank lines immediately before/after comments.',
+              'msg': 'Blank line adjacent to comment',
+              'fix': 'Comments should be adjacent to the code they describe.'},
     'AR013': {'group': 'blanks',
               'desc': 'Remove blank lines when consecutive statements '
-                       'at same indent are fewer than min_gap.'},
+                       'at same indent are fewer than min_gap.',
+              'msg': 'Unnecessary blank line between statements',
+              'fix': 'PEP8: blank lines only for logical sections, not between every statement.'},
     'AR014': {'group': 'blanks',
               'desc': 'Remove blank lines between decorators and their '
-                       'target function/class definition.'},
+                       'target function/class definition.',
+              'msg': 'Blank line between decorator and definition',
+              'fix': 'Decorators must be directly above their target with no blank lines.'},
     'AR021': {'group': 'comments',
               'desc': 'Remove comment-only lines repeating 4+'
-                       ' identical non-whitespace chars.'},
+                       ' identical non-whitespace chars.',
+              'msg': 'Comment line with repeated characters',
+              'fix': 'Decorative separator lines (e.g., `#####`) are noise; remove them.'},
     'AR022': {'group': 'comments',
               'desc': 'Enforce max line length on comment-only '
-                       'lines (error only, no auto-fix).'},
+                       'lines (error only, no auto-fix).',
+              'msg': 'Comment line exceeds maximum length',
+              'fix': 'Split into multiple shorter comment lines or rewrap.'},
     'AR031': {'group': 'emojis',
-              'desc': 'Remove emoji characters.'},
+              'desc': 'Remove emoji characters.',
+              'msg': 'Emoji character in source code',
+              'fix': 'Emojis are not appropriate in source code; remove them.'},
     'AR032': {'group': 'emojis',
-              'desc': 'Replace decorative text with plain versions.'},
+              'desc': 'Replace decorative text with plain versions.',
+              'msg': 'Decorative text character in source code',
+              'fix': 'Replace decorative chars (✓, ✗) with plain ASCII (+, x).'},
 }
 GROUPS: dict[str, tuple[str, ...]] = {
     'underscores': ('AR001', 'AR002', 'AR003', 'AR004'),
@@ -292,3 +324,14 @@ def validate_rules(rules: Iterable[str]) -> set[str]:  # noqa: F821
 def get_rule_group(code: str) -> str:
     """Return the group name for a rule code from RULE_CATALOG."""
     return RULE_CATALOG.get(code, {}).get('group', 'custom')
+
+
+def get_rule_message(code: str) -> str:
+    """Return the violation message for a rule code."""
+    entry = RULE_CATALOG.get(code, {})
+    return entry.get('msg', entry.get('desc', f'Violation of {code}'))
+
+
+def get_rule_fix(code: str) -> str | None:
+    """Return the fix hint for a rule code, or None if not available."""
+    return RULE_CATALOG.get(code, {}).get('fix')
