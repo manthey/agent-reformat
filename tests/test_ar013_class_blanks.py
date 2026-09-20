@@ -110,21 +110,23 @@ class B:
                 )
 
     def test_blank_inside_function_preserved(self, tmp_path: Path):
-        """Blank lines inside a function body should be preserved."""
-        src = """def my_func():
-    \"\"\"Docstring.\"\"\"
-
-    x = 1
-
-
-class Outer:
-    pass
-
-"""
-        # We need to test this differently because AR013 operates on statements
-        # Let's check that blank inside class is still preserved
+        """Blank after a docstring is removed; module-level blanks preserved."""
+        src = (
+            'def my_func():\n'
+            '    """Docstring."""\n'
+            '\n'
+            '    x = 1\n'
+            '\n'
+            '\n'
+            'class Outer:\n'
+            '    pass\n'
+            '\n'
+        )
         _, after = run_fix(tmp_path, src)
-        assert '    pass\n' in after or 'pass' in after
+        assert after == (
+            'def my_func():\n    """Docstring."""\n    x = 1\n'
+            '\n\nclass Outer:\n    pass\n\n'
+        )
 
 
 class TestAR013ClassBodyBlanksRegression:

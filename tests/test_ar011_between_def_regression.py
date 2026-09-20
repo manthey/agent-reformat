@@ -56,7 +56,7 @@ class TestAR011BetweenDefRegression:
         _, after = run_fix(tmp_path, src)
         # Module-level func defs have 2+ blank lines between them for
         # separation
-        assert '\n\n\n' in after or '\n\n' in after.replace('pass', ''), \
+        assert after == 'def foo(): pass\n\n\ndef bar(): pass\n', \
             'Blank line between module-level functions was removed'
 
     def test_blank_after_function_before_module_var_preserved(self, tmp_path: Path) -> None:

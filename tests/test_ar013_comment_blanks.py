@@ -98,17 +98,11 @@ class TestAR013CommentBlankPreservation:
             '    pass\n'
         )
         result, removed = fix_blanks_ar013(src, min_gap=3)
-        # The blank should NOT be removed by our comment protection because
-        # different indents are not considered the "same indent level"
-        # In AR013, comments aren't statements so this blank isn't in a group
-        # The key thing to test: the comment protection doesn't extend across
-        # different indent levels
-        # Since comments aren't tracked as statements, no protection applies
-        # at this level - the fix correctly only protects same-indent pairs
-        # Verify the blank was NOT protected (it's between different indents)
-        # Note: In practice, this blank might still exist if it's between
-        # non-contiguous statement groups
-        assert 2 not in removed, 'Blank should NOT be protected across different indents'
+        # The only statement here is `pass`, so there is no statement group
+        # to trigger AR013: the blank must be left untouched and the comment
+        # protection must not reach across different indent levels.
+        assert removed == set()
+        assert result == src
 
     def test_blank_between_comments_with_code_around_preserved(self, tmp_path: Path) -> None:
         """Blank between comments should be preserved even with code around them."""

@@ -98,4 +98,4 @@ x = 1
 """
         _, after = run_fix(tmp_path, src)
         # Blank between from imports should be preserved
-        assert '\n' in after
+        assert '    from os import path\n\n    from sys import argv' in after

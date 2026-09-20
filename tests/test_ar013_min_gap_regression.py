@@ -64,9 +64,9 @@ class TestAR013LargeGroupContinuationPreservation:
 """
         _, after = run_fix(tmp_path, src)
         # Blank between tileInfo and deferred attrs should be preserved
-        assert 'self.retile\n\n        self.deferredKeys' in after or \
-               'self.retile\n        self.deferredKeys' not in after, \
-            'Blank between sections must be kept'
+        assert (
+            "and 'self.metadata'\n\n        self.deferredKeys" in after
+        ), 'Blank between sections must be kept'
 
     def test_consecutive_blocks_with_separator(self, tmp_path: Path) -> None:
         """When left block has >= min_gap but right also does, preserve one blank.
@@ -120,9 +120,10 @@ class TestAR013LargeGroupContinuationPreservation:
     j = 10
 """
         _, after = run_fix(tmp_path, src)
-        # Multiple sections need at least one blank separator
-        assert 'd = 4\n\n    e' in after or 'd = 4\n    d' not in after, \
-            'Visual blocks should maintain at least one blank separator'
+        # Single blank after b=2 kept; double blank after f=6 reduced to one.
+        assert '    b = 2\n\n    c = 3' in after
+        assert '    f = 6\n\n    g = 7' in after
+        assert 'f = 6\n\n\n' not in after
 
 
 class TestAR013MinGapCounting:

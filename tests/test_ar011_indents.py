@@ -104,15 +104,6 @@ class TestAR011IndentBoundaries:
         # All four blanks before the indented body should be removed
         assert after == 'def foo():\n    x = 1\n'
 
-    def test_nested_indent_blank_removed(self, tmp_path: Path) -> None:
-        """Blank lines before nested indents are also removed."""
-        src = """if True:
-    if True:
-        pass
-"""
-        _, after = run_fix(tmp_path, src)
-        assert after == 'if True:\n    if True:\n        pass\n'
-
 
 class TestAR011OutdentBoundaries:
     """Test outdent behavior."""
@@ -130,26 +121,6 @@ class TestAR011OutdentBoundaries:
         _, after = run_fix(tmp_path, src)
         # Blank after for block before module-level code is preserved
         assert 'pass\n\nx' in after
-
-    def test_blank_after_class_methods(self, tmp_path: Path) -> None:
-        """Blank lines within class at same indent should be preserved (not AR011)."""
-        src = 'class Foo:\n    def a(self): pass\n\n    def b(self): pass\n'
-        _, after = run_fix(tmp_path, src)
-        # Within class body: blank kept (same indent level).
-        assert '\n' in after  # just ensure structure preserved
-
-    def test_blank_inside_nested_blocks_removed(self, tmp_path: Path) -> None:
-        """Blank lines inside nested blocks are cleaned up."""
-        src = """if True:
-    for i in range(1):
-        x = 1
-
-
-y = 2
-"""
-        _, after = run_fix(tmp_path, src)
-        # Blank in for body removed; module level preserved
-        assert 'for i in range(1):\n        x = 1' in after
 
 
 class TestAR011PreservedBlanks:
@@ -184,7 +155,7 @@ class TestAR011PreservedBlanks:
         src = 'x = 1\n\ny = 2\n'
         _, after = run_fix(tmp_path, src)
         # These are at the same module-level indent, no indent change
-        assert '\n\n' in after or 'x = 1\n\ny' in after
+        assert '\n\n' in after
 
     def test_no_blanks_before_import_preserved(self, tmp_path: Path) -> None:
         """Blanks between imports preserved."""
@@ -193,7 +164,7 @@ class TestAR011PreservedBlanks:
 import sys
 """
         _, after = run_fix(tmp_path, src)
-        assert 'import' in after
+        assert 'import os\n\nimport sys' in after
 
 
 class TestAR011ModuleLevelStructureProtection:

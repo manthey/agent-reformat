@@ -973,7 +973,11 @@ def collect_stmt_starts(source, lines, string_lines):  # noqa: C901
 
     Also returns import_line_numbers to allow AR013 to protect blanks around imports.
     """
-    tree = ast.parse(source)
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        # Unparsable input: report no statements so callers leave it alone.
+        return [], set()
     out: list[tuple[int, int]] = []
     import_lines: set[int] = set()  # 0-based line numbers that are imports
     # Build a set of (start_line_1based, end_line_1based) for truly multiline
@@ -1327,7 +1331,12 @@ def fix_blanks_ar013(source, min_gap=3):
     if len(lines) <= 1:
         return source, set()
     string_lines = find_string_lines(source)
-    tree = ast.parse(source)
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        # Unparsable input: leave the file untouched, as every other rule
+        # does when the AST cannot be built.
+        return source, set()
     stmts_raw, import_lines = collect_stmt_starts(source, lines, string_lines)
     deduped: list[tuple[int, int]] = sorted(
         set(stmts_raw), key=lambda e: e[0],

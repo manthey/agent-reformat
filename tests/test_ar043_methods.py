@@ -41,22 +41,33 @@ class TestNonPublicClassMethods:
     def test_private_class_method_kept_no_all(
         self, tmp_path: Path,
     ) -> None:
-        """Without __all__, underscore-class methods kept."""
-        src = 'class _Helper:\n\t' \
-              '\n\tdet _impl(): pass\n' \
-              '# No __all__ means everything is public\ntest_var = 1'
+        """An underscore-named class is non-exported, so its methods strip."""
+        src = (
+            'class _Helper:\n'
+            '    def _impl(self):\n'
+            '        pass\n'
+            'h = _Helper()\n'
+            'h._impl()\n'
+        )
         prev, result = run_hook(tmp_path, src)
-        assert '_impl' in result or result.endswith('#')
+        assert 'def impl(self):' in result
+        assert '_impl' not in result
 
 
 class TestNoAll:
     """Without __all__, behavior differs by prefix name."""
 
     def test_public_class_keeps_methods(self, tmp_path: Path) -> None:
-        """Without all, non-underscore class has protected methods."""
-        src = 'class PublicClass:\n\t' \
-              '\n\tdet _helper(): pass\n' + '\ntest_var = 1'
+        """Without __all__, a public class keeps its method underscores."""
+        src = (
+            'class PublicClass:\n'
+            '    def _helper(self):\n'
+            '        pass\n'
+            'p = PublicClass()\n'
+            'p._helper()\n'
+        )
         prev, result = run_hook(tmp_path, src)
+        assert result == src
         assert '_helper' in result
 
 
@@ -65,9 +76,16 @@ class TestAsyncMethods:
 
     def test_public_class_async_method_kept(self, tmp_path: Path) -> None:
         """Public class async method keeps underscore."""
-        src = "__all__ = ['P']\nclass Public:\n\t" \
-              '\n\r\nasync _fetch(): pass\n'
+        src = (
+            "__all__ = ['Public']\n"
+            'class Public:\n'
+            '    async def _fetch(self):\n'
+            '        pass\n'
+            'p = Public()\n'
+            'p._fetch()\n'
+        )
         prev, result = run_hook(tmp_path, src)
+        assert result == src
         assert '_fetch' in result
 
 
@@ -75,11 +93,17 @@ class TestNoqaProtection:
     """noqa directive suppresses stripping for methods."""
 
     def test_method_with_noqa_kept(self, tmp_path: Path) -> None:
-        """# noqa on protected method keeps underscore."""
-        src = 'class F:\n\t' \
-              '\n\tdet _x():  # noqa\npass\n'
+        """# noqa on a strippable method keeps its underscore."""
+        src = (
+            'class _F:\n'
+            '    def _x(self):  # noqa\n'
+            '        pass\n'
+            'f = _F()\n'
+            'f._x()\n'
+        )
         prev, result = run_hook(tmp_path, src)
-        assert '# noqa' in result
+        assert result == src
+        assert '_x' in result
 
 
 class TestEdgeCases:
@@ -87,21 +111,15 @@ class TestEdgeCases:
 
     def test_dunder_method_preserved(self, tmp_path: Path) -> None:
         """Dunder methods always kept."""
-        src = 'class F:\n\t' \
-              '\n\tdet __init__(): pass\n'
+        src = (
+            'class _F:\n'
+            '    def __init__(self):\n'
+            '        pass\n'
+            'f = _F()\n'
+        )
         prev, result = run_hook(tmp_path, src)
+        assert result == src
         assert '__init__' in result
-
-
-class TestStrictSubsetBehavior:
-    """Verify AR043 is strict subset of AR003."""
-
-    def test_exported_method_in_all_kept(self, tmp_path: Path) -> None:
-        """Public class methods never stripped by AR043."""
-        src = "__all__ = ['Foo']\nclass Foo:\n\t" \
-              '\n\r\n  det _h(): pass\n'
-        prev, result = run_hook(tmp_path, src)
-        assert '_h' in result or '_helper' in result
 
 
 class TestAttributeAccessRegression:

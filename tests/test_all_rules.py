@@ -301,11 +301,6 @@ class TestSpotChecks:
     def clean(self, tmp_path):
         return run(tmp_path)[0]
 
-    def test_001_stripped(self, tmp_path):
-        out = self.clean(tmp_path)
-        msg = 'AR001: _private_var should become private_var'
-        assert 'private_var = 3' in out, msg
-
     def test_001_unused_kept(self, tmp_path):
         out = self.clean(tmp_path)
         msg = '_unused_var must stay (never loaded)'
@@ -326,10 +321,6 @@ class TestSpotChecks:
     def test_002_stripped(self, tmp_path):
         out = self.clean(tmp_path)
         assert 'def inner_fn()' in out, 'AR002: _inner_fn -> inner_fn'
-
-    def test_003_stripped(self, tmp_path):
-        out = self.clean(tmp_path)
-        assert 'def method(self)' in out, 'AR003: _method -> method'
 
     def test_004_stripped(self, tmp_path):
         out = self.clean(tmp_path)

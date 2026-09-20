@@ -108,11 +108,6 @@ class TestAR021RepeatingComments:
         """A line of repeated dashes as a comment should be removed."""
         src = '# --------\nx = 1\n'
         _, after = run_fix(tmp_path, src)
-        assert '# --------' not in after or '####==' in after or '# --' not in after
-        # Actually just verify the line isn't preserved exactly as-is
-        lines = after.split('\n')
-        for line in lines:
-            assert line != '# --------', 'Repeated-dash comment should be removed'
         assert after == 'x = 1\n'
 
     def test_repeated_underscore_comment_removed(self, tmp_path: Path) -> None:

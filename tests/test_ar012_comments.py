@@ -299,10 +299,7 @@ class TestAR012AfterFunctionBlanks:
                'x = 1\n')
         _, after = run_fix(tmp_path, src)
         # The blank after the function should be preserved
-        assert 'pass\n\n#' in after or 'pass\n# Comment' in after
-        # Verify we kept at least some spacing
-        assert 'def foo()' in after
-        assert '# comment' not in after.split('\\n')[0] if '\\n' in after else True
+        assert after == 'def foo():\n    pass\n\n# Comment\nx = 1\n'
 
     def test_blanks_after_function_in_class_preserved(self, tmp_path: Path) -> None:
         """Blank line after method definition before comment should be preserved."""
@@ -315,9 +312,8 @@ class TestAR012AfterFunctionBlanks:
                '    def other(self):\n'
                '        pass\n')
         _, after = run_fix(tmp_path, src)
-        # Method should be preserved with blanks around it
-        assert 'def method(self):' in after
-        assert 'def other(self):' in after
+        # Blanks around the inner comment should be preserved unchanged
+        assert after == src
 
     def test_blanks_after_nested_function_preserved(self, tmp_path: Path) -> None:
         """Blank line after nested function definition should be preserved."""
@@ -330,9 +326,7 @@ class TestAR012AfterFunctionBlanks:
                '    return inner()\n')
         _, after = run_fix(tmp_path, src)
         # The blank after inner() should be preserved
-        assert 'return 42' in after
-        assert '# setup comment' not in ''.join(after.lower().replace(
-            '#', '').split()) if '#' not in after else True
+        assert after == src
 
     def test_blanks_after_class_before_comment_preserved(self, tmp_path: Path) -> None:
         """Blank line after class body before a comment should be preserved."""

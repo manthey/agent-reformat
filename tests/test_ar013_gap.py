@@ -38,13 +38,6 @@ class TestAR013BasicRemoval:
         _, after = run_fix(tmp_path, src)
         assert after == 'x = 1\ny = 2\nz = 3\n'
 
-    def test_three_statements_with_blank_kept(self, tmp_path: Path) -> None:
-        """Three consecutive statements with a blank keeps it (min_gap met)."""
-        src = 'x = 1\n\ny = 2\nz = 3\n'
-        _, after = run_fix(tmp_path, src)
-        # Three+ statements so blank is preserved
-        assert '\n' in after
-
     def test_four_statements_with_blank_kept(self, tmp_path: Path) -> None:
         """Four consecutive same-indent statements have pair gaps < min_gap,
         so blanks between adjacent pairs are removed (each pair gap has only
@@ -81,7 +74,7 @@ class TestAR013FewStatementsRemoved:
 """
         _, after = run_fix(tmp_path, src)
         # Inside function: 2 statements < min_gap -> remove blank
-        assert '    a = 1\n    b = 2' in after or 'a = 1\nb = 2' in after
+        assert after == 'def foo():\n    a = 1\n    b = 2\n'
 
     def test_many_module_level_reduced(self, tmp_path: Path) -> None:
         """Only two module-level stmts with blank -> reduce to no blank."""
@@ -176,7 +169,7 @@ class TestAR013ComplexScenarios:
 """
         _, after = run_fix(tmp_path, src)
         # Two statements at indent 4 inside if < min_gap -> blank removed
-        assert 'a = 1\n    b = 2' in after or 'a = 1\nb = 2' in after
+        assert after == 'if True:\n    a = 1\n    b = 2\n'
 
 
 class TestAR013EdgeCases:
