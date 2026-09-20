@@ -63,6 +63,8 @@ The **AR00x** rules strip single leading underscores from identifiers regardless
 
 The **AR04x** rules only strip single leading underscores from identifiers that are **not exported** via `__all__` or have public exposure. This is preferred for libraries to signal what functions, methods, and variables are official or quasi-hidden.
 
+Additionally, a module that is itself internal is treated as fully non-exported even without an `__all__`. A module is internal when its own name or any ancestor package directory starts with a single underscore — for example `foo/_bar/_baz.py`, or `foo/_bar/baz.py`. In such a module every single-leading-underscore identifier is stripped by AR04x, and any `__all__` the module declares does not shield names from stripping, because nothing in a private module is exported. Dunder names (`__x__`) and names with a trailing underscore are never stripped.
+
 The rationale behind the **AR01x** rules is directly from PEP8: "Use blank lines in functions, sparingly, to indicate logical sections.". Coding agents clearly do know what the word "sparingly" means. For logical sections, indents, outdents, and comments already indicate this, and having gaps between every statement becomes meaningless.
 
 ### Default Behavior

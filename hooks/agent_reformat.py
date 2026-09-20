@@ -204,6 +204,49 @@ def get_constant_value(node):
     return None
 
 
+def is_private_module(filepath):
+    """Return True if the module (or an ancestor package) is private.
+
+    A module is private when its own stem or any ancestor package directory
+    starts with a single underscore (e.g. ``foo/_bar/_baz.py``).  In such a
+    module nothing is exported, so AR04x may strip every non-dunder leading
+    underscore regardless of any ``__all__`` the module happens to define.
+    Dunder names (``__init__``) and names with a trailing underscore are not
+    considered private markers here.
+    """
+    try:
+        path = Path(filepath).resolve()
+    except (OSError, ValueError):
+        return False
+    # The module stem itself (without .py), e.g. foo/_bar/_baz.py -> _baz
+    stem = path.stem
+    if is_private_component(stem):
+        return True
+    # Walk ancestor package directories; stop at a regular package boundary.
+    for parent in path.parents:
+        name = parent.name
+        if not name or name in ('.', '..', path.anchor):
+            continue
+        if is_private_component(name):
+            return True
+        # Only continue while the directory looks like a package (or is the
+        # file's immediate parent), otherwise we could pick up underscores
+        # from unrelated directories higher up the tree.
+        if not (parent / '__init__.py').is_file() and parent != path.parent:
+            break
+    return False
+
+
+def is_private_component(name):
+    """True for a single-underscore-prefixed, non-dunder, non-trailing name."""
+    return (
+        name.startswith('_') and
+        not name.startswith('__') and
+        not name.endswith('_') and
+        len(name) > 1
+    )
+
+
 def collect_exported_names(tree):
     """Detect __all__ export list or infer from module structure.
 
@@ -333,7 +376,14 @@ def strip_underscores(filepath, rules, dry_run=False, show=False):  # noqa: C901
         return []
     # Collect export info for AR04x rules
     all_defined, exported_set = collect_exported_names(tree)
-    class_is_public = collect_class_exports(tree)
+    # A private module (itself or an ancestor package flagged internal with a
+    # leading underscore) exports nothing: treat it as an explicit empty
+    # __all__ so every non-dunder name is a stripping candidate under AR04x.
+    if is_private_module(filepath):
+        all_defined, exported_set = True, set()
+        class_is_public = dict.fromkeys(collect_class_exports(tree), False)
+    else:
+        class_is_public = collect_class_exports(tree)
     replacements = {}
     violations = []
 
@@ -428,7 +478,7 @@ def strip_underscores(filepath, rules, dry_run=False, show=False):  # noqa: C901
         if has_ar044 and not has_ar004:
             if all_defined:  # When __all__ is defined
                 parent_cls = get_nested_func_parent_class(ident, lineno, tree,
-                                                          collect_class_exports(tree))
+                                                          class_is_public)
                 if parent_cls:  # Inside a public class - don't strip under AR044
                     skip_for_ar044 = True
             else:
