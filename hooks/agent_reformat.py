@@ -182,6 +182,7 @@ def collect_definitions_by_type(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             result.append((node.name, 'function', node.lineno))
         elif isinstance(node, ast.ClassDef):
+            result.append((node.name, 'class', node.lineno))
             for inner_node in getattr(node, 'body', []):
                 if isinstance(inner_node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     result.append((inner_node.name, 'method', inner_node.lineno))
@@ -321,6 +322,8 @@ def is_protected(active_underscore_rules, source, usages, ident, kind, lineno): 
                 kept = True
             elif kind == 'method' and code in ('AR003', 'AR043'):
                 kept = True
+            elif kind == 'class' and code in ('AR005', 'AR045'):
+                kept = True
             elif kind is NESTED_FUNC_KIND and code in ('AR004', 'AR044'):
                 kept = True
             if kind == 'variable' and code == 'AR001':
@@ -328,6 +331,8 @@ def is_protected(active_underscore_rules, source, usages, ident, kind, lineno): 
             elif kind == 'function' and code == 'AR002':
                 kept = True
             elif kind == 'method' and code == 'AR003':
+                kept = True
+            elif kind == 'class' and code == 'AR005':
                 kept = True
     if not kept:
         return False  # Not a candidate for stripping at all
@@ -368,8 +373,8 @@ def strip_underscores(filepath, rules, dry_run=False, show=False):  # noqa: C901
     nested_defs = collect_nested_functions(tree)
     # Determine which rule groups are active
     old_underscore_codes = expand_shorthand('underscores') or (
-        'AR001', 'AR002', 'AR003', 'AR004')
-    new_underscore_codes = {'AR041', 'AR042', 'AR043', 'AR044'}
+        'AR001', 'AR002', 'AR003', 'AR004', 'AR005')
+    new_underscore_codes = {'AR041', 'AR042', 'AR043', 'AR044', 'AR045'}
     active_old_rules = set(rules) & set(old_underscore_codes)
     active_new_rules = set(rules) & new_underscore_codes
     if not active_old_rules and not active_new_rules:
@@ -386,30 +391,45 @@ def strip_underscores(filepath, rules, dry_run=False, show=False):  # noqa: C901
         class_is_public = collect_class_exports(tree)
     replacements = {}
     violations = []
+    kind_rules_pair = {
+        'variable': ('AR001', 'AR041'),
+        'function': ('AR002', 'AR042'),
+        'method': ('AR003', 'AR043'),
+        NESTED_FUNC_KIND: ('AR004', 'AR044'),
+        'class': ('AR005', 'AR045'),
+    }
 
     def get_rule_code(kind, use_new_rules):
         """Return the appropriate rule code for reporting."""
-        codes = {'variable': ('AR001', 'AR041'),
-                 'function': ('AR002', 'AR042'),
-                 'method': ('AR003', 'AR043'),
-                 NESTED_FUNC_KIND: ('AR004', 'AR044')}
-        base, priv = codes[kind]
+        base, priv = kind_rules_pair[kind]
         return priv if use_new_rules else base
 
     def need_check_export_exposure(kind):
         """Return True if this kind needs export exposure checking."""
-        # Methods always need check (need to know their containing class)
-        # Variables/functions only if AR04x rules are active
-        return kind == 'method' or bool(active_new_rules)
+        # Methods and classes always need check (they consult class/export
+        # visibility directly); variables/functions only if AR04x is active.
+        return kind in ('method', 'class') or bool(active_new_rules)
+
+    def kind_is_targeted(kind):
+        """True if any active underscore rule targets this kind."""
+        return bool(
+            (active_old_rules | active_new_rules) &
+            set(kind_rules_pair.get(kind, ())))
+
     for ident, kind, lineno in raw_defs:
         if not ident.startswith('_') or ident.startswith('__') or ident.endswith('_'):
+            continue
+        if not kind_is_targeted(kind):
             continue
         if usages.get(ident, 0) == 0:
             continue
         # Check export exposure for AR04x rules
         has_export_exposure = False
         if active_new_rules and need_check_export_exposure(kind):
-            if kind in ('variable', 'function'):
+            if kind in ('variable', 'function', 'class'):
+                # Class names are module-level bindings, so they follow the
+                # same export semantics as AR041/AR042: without __all__ a class
+                # is implicitly public; with __all__ only listed names are.
                 has_export_exposure = is_public_name(ident, all_defined, exported_set)
             elif kind == 'method':
                 # Find containing class for this method
@@ -434,7 +454,7 @@ def strip_underscores(filepath, rules, dry_run=False, show=False):  # noqa: C901
             pass
         # Check export exposure for AR04x rules and skip protected names
         if active_new_rules and not active_old_rules:
-            if kind in ('variable', 'function'):
+            if kind in ('variable', 'function', 'class'):
                 if is_public_name(ident, all_defined, exported_set):
                     continue  # Exported  don't strip
             elif kind == 'method':
@@ -454,8 +474,9 @@ def strip_underscores(filepath, rules, dry_run=False, show=False):  # noqa: C901
         if is_protected(all_active_rules, source, usages, ident, kind, lineno):
             continue
         replacements[ident] = ident.lstrip('_')
-        violations.append(
-            (lineno, get_rule_code(kind, bool(active_new_rules and not active_old_rules))))
+        base_code, priv_code = kind_rules_pair[kind]
+        use_priv = priv_code in active_new_rules and base_code not in active_old_rules
+        violations.append((lineno, get_rule_code(kind, use_priv)))
     # Process nested functions for AR004/AR044
     usages = {}  # lines per identifier (also tracks Attribute.attr)
     for node in ast.walk(tree):
@@ -464,8 +485,9 @@ def strip_underscores(filepath, rules, dry_run=False, show=False):  # noqa: C901
         elif hasattr(node, 'attr') and isinstance(node.ctx, ast.Load):
             if isinstance(node.attr, str):
                 usages.setdefault(node.attr, []).append(getattr(node, 'lineno', None))
-    has_ar004 = 'AR004' in set(rules) & {'AR001', 'AR002', 'AR003', 'AR004'}
-    has_ar044 = 'AR044' in set(rules) & {'AR041', 'AR042', 'AR043', 'AR044'}
+    has_ar004 = 'AR004' in set(rules) & {'AR001', 'AR002', 'AR003', 'AR004', 'AR005'}
+    has_ar044 = 'AR044' in set(rules) & {'AR041', 'AR042', 'AR043', 'AR044',
+                                         'AR045'}
     for ident, lineno in nested_defs:
         if not ident.startswith('_') or ident.startswith('__') or ident.endswith('_'):
             continue
@@ -485,8 +507,10 @@ def strip_underscores(filepath, rules, dry_run=False, show=False):  # noqa: C901
                 # No __all__ means everything is implicitly public
                 skip_for_ar044 = True
         if not skip_for_ar044 and (has_ar004 or has_ar044):
-            all_active_underscore_rules = set(rules) & {'AR001', 'AR002', 'AR003', 'AR004',
-                                                        'AR041', 'AR042', 'AR043', 'AR044'}
+            all_active_underscore_rules = set(rules) & {'AR001', 'AR002', 'AR003',
+                                                        'AR004', 'AR005', 'AR041',
+                                                        'AR042', 'AR043', 'AR044',
+                                                        'AR045'}
             if not is_protected(all_active_underscore_rules, source, usages, ident,
                                 'nested_func', lineno):
                 replacements[ident] = ident.lstrip('_')

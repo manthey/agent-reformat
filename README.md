@@ -46,6 +46,7 @@ For AR022 (comment line length), the message includes the actual length vs. maxi
 | `AR002` | Underscore   | Strip single leading underscores from **top-level functions**.              | `def _func()` -> `def func()` |
 | `AR003` | Underscore   | Strip single leading underscores from **class methods**.                    | `def _method(self)` -> `def method(self)` |
 | `AR004` | Underscore   | Strip single leading underscores from **nested functions**.                 | Remove leading underscore from nested function |
+| `AR005` | Underscore   | Strip single leading underscores from **top-level classes**.                | `class _Klass` -> `class Klass` |
 | `AR011` | Blank lines  | Remove blank lines before indent/outdent statement boundaries.              | Indentation already shows structure; extra blanks are noise |
 | `AR012` | Blank lines  | Remove blank lines immediately adjacent to comments.                        | Comments should be adjacent to the code they describe |
 | `AR013` | Blank lines  | Remove blank lines when consecutive statements at same indent < min_gap.    | Blank lines only for logical sections, not between every statement |
@@ -58,6 +59,7 @@ For AR022 (comment line length), the message includes the actual length vs. maxi
 | `AR042` | Underscore   | Strip underscores from **non-exported functions/methods**.                  | Not exported; remove underscore |
 | `AR043` | Underscore   | Strip underscores from methods in **non-exported classes**.                 | Class not exported; remove underscore |
 | `AR044` | Underscore   | Strip underscores from **non-exported nested functions**.                   | Not exported; remove underscore |
+| `AR045` | Underscore   | Strip underscores from **non-exported classes**.                            | Class not in `__all__`; remove underscore |
 
 The **AR00x** rules strip single leading underscores from identifiers regardless of export status. These are safe for application code that isn't a library with an explicit public API.
 

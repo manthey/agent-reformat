@@ -24,6 +24,11 @@ RULE_CATALOG: dict[str, dict[str, str]] = {
                        'nested functions.',
               'msg': 'Leading underscore on nested function',
               'fix': 'Remove the leading underscore from nested function'},
+    'AR005': {'group': 'underscores',
+              'desc': 'Strip single leading underscores from '
+                       'top-level classes.',
+              'msg': 'Leading underscore on class',
+              'fix': 'Remove the leading underscore: `class _Klass` -> `class Klass`'},
     'AR041': {'group': 'underscores',
               'desc': 'Strip single leading underscores from '
                        'non-exported variables.',
@@ -44,6 +49,11 @@ RULE_CATALOG: dict[str, dict[str, str]] = {
                        'non-exported nested functions.',
               'msg': 'Leading underscore on non-exported nested function',
               'fix': 'Nested function is not exported; remove leading underscore'},
+    'AR045': {'group': 'underscores',
+              'desc': 'Strip single leading underscores from '
+                       'non-exported classes.',
+              'msg': 'Leading underscore on non-exported class',
+              'fix': 'Class is not exported; remove leading underscore'},
     'AR011': {'group': 'blanks',
               'desc': 'Remove blank lines before or after indent/'
                        'outdent statement boundaries.',
@@ -83,8 +93,8 @@ RULE_CATALOG: dict[str, dict[str, str]] = {
               'fix': 'Replace decorative check/X marks with plain ASCII (+, x).'},
 }
 GROUPS: dict[str, tuple[str, ...]] = {
-    'underscores': ('AR001', 'AR002', 'AR003', 'AR004'),
-    'underscores-private': ('AR041', 'AR042', 'AR043', 'AR044'),
+    'underscores': ('AR001', 'AR002', 'AR003', 'AR004', 'AR005'),
+    'underscores-private': ('AR041', 'AR042', 'AR043', 'AR044', 'AR045'),
     'blanks': ('AR011', 'AR012', 'AR013', 'AR014'),
     'emojis': ('AR031', 'AR032'),
     'comments': ('AR021', 'AR022'),

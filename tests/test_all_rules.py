@@ -63,6 +63,17 @@ def _orphan_fn():                # never loaded -> kept
 # =============================================================================
 #  AR003 / AR043   class method underscores
 # =============================================================================
+class _PrivClass:               # AR005 strips class name (used below)
+    pass
+
+
+_priv_inst = _PrivClass()       # loads _PrivClass -> triggers 005 stripping
+
+
+class __Meta__:                 # dunder class -> kept
+    pass
+
+
 class PubClass:
     def __init__(self):          # dunder -> kept
         pass
@@ -270,7 +281,7 @@ def run(tmp_path: Path):
 
 class TestAllRulesFire:
     EXPECTED = frozenset({
-        'AR001', 'AR002', 'AR003', 'AR004',
+        'AR001', 'AR002', 'AR003', 'AR004', 'AR005',
         'AR011', 'AR012', 'AR013', 'AR014',
         'AR021', 'AR031', 'AR032',
     })
@@ -324,6 +335,15 @@ class TestSpotChecks:
         out = self.clean(tmp_path)
         assert 'def nested_in_class()' in out, 'AR004 nested_in_class'
         assert 'def nested_in_fn()' in out, 'AR004 nested_in_fn'
+
+    def test_005_stripped(self, tmp_path):
+        out = self.clean(tmp_path)
+        assert 'class PrivClass:' in out, 'AR005: _PrivClass -> PrivClass'
+        assert '_priv_inst = PrivClass()' in out, 'AR005 reference updated'
+
+    def test_005_dunder_class_kept(self, tmp_path):
+        out = self.clean(tmp_path)
+        assert 'class __Meta__:' in out, 'dunder class kept'
 
     def test_011_entry_blank_removed(self, tmp_path):
         out = self.clean(tmp_path)
