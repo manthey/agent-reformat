@@ -2,28 +2,6 @@
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
-from hooks.agent_reformat import run as run_hook
-
-
-def run_fix(tmp_path: Path, source_code: str) -> tuple[str, str]:
-    """Run agent-reformat in fix mode on a temp file. Returns (original, modified)."""
-    f = tmp_path / 'test.py'
-    f.write_text(source_code)
-    original_stdout = sys.stdout
-    captured = __import__('io').StringIO()
-    try:
-        sys.stdout = captured
-        try:
-            run_hook([str(f), '--fix', '--rules', 'AR013'])
-        except SystemExit:
-            pass
-    finally:
-        sys.stdout = original_stdout
-    return source_code, f.read_text()
-
 
 class TestAR013LargeGroupContinuationPreservation:
     """Test that blanks between sections in large groups are preserved correctly.
@@ -33,7 +11,7 @@ class TestAR013LargeGroupContinuationPreservation:
     visual separator when either side of the gap has >= min_gap contiguous statements.
     """
 
-    def test_init_section_separator_preserved(self, tmp_path: Path) -> None:
+    def test_init_section_separator_preserved(self, tmp_path, reformat) -> None:
         """Blank between __init__ sections with many assignments preserved.
 
         This tests the tiledict.py scenario where __init__ has multiple sections
@@ -62,13 +40,13 @@ class TestAR013LargeGroupContinuationPreservation:
         self.loaded = False
         super().__init__()
 """
-        _, after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR013').after
         # Blank between tileInfo and deferred attrs should be preserved
         assert (
             "and 'self.metadata'\n\n        self.deferredKeys" in after
         ), 'Blank between sections must be kept'
 
-    def test_consecutive_blocks_with_separator(self, tmp_path: Path) -> None:
+    def test_consecutive_blocks_with_separator(self, tmp_path, reformat) -> None:
         """When left block has >= min_gap but right also does, preserve one blank.
 
         For pattern like: A=1..B (5 stmts), blank, C=3..E (3 stmts)
@@ -85,7 +63,7 @@ class TestAR013LargeGroupContinuationPreservation:
 
         e = 5
 """
-        _, after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR013').after
         # Two newlines = one visual blank preserved
         lines_a = after.split('\n')
         for i, line in enumerate(lines_a):
@@ -96,7 +74,7 @@ class TestAR013LargeGroupContinuationPreservation:
                     f"Expected blank after 'd=4', got: {next_line!r}"
                 break
 
-    def test_both_sides_few_keep_one_blank(self, tmp_path: Path) -> None:
+    def test_both_sides_few_keep_one_blank(self, tmp_path, reformat) -> None:
         """When BOTH sides have < min_gap contiguous but in large group, preserve one blank.
 
         This is the tricky case: within a 10-statement large group, if two adjacent
@@ -119,7 +97,7 @@ class TestAR013LargeGroupContinuationPreservation:
     i = 9
     j = 10
 """
-        _, after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR013').after
         # Single blank after b=2 kept; double blank after f=6 reduced to one.
         assert '    b = 2\n\n    c = 3' in after
         assert '    f = 6\n\n    g = 7' in after
@@ -129,7 +107,7 @@ class TestAR013LargeGroupContinuationPreservation:
 class TestAR013MinGapCounting:
     """Test that contiguous statement counting works correctly."""
 
-    def test_counting_before_gap(self, tmp_path: Path) -> None:
+    def test_counting_before_gap(self, tmp_path, reformat) -> None:
         """Contiguous statements BEFORE a gap are counted from the left side backward."""
         src = """class C:
     def __init__(self):
@@ -138,15 +116,18 @@ class TestAR013MinGapCounting:
 
         self.z = 3
 """
-        _, after = run_fix(tmp_path, src)
-        # Two statements before gap (< min_gap=3), one after
-        # Neither side >= 3, but since this is a small group (4 entries),
-        # it's the short group logic that applies - blank removed if short
-        # Actually with only 4 statements in function body as same indent:
-        # Both sides < min_gap, so remove blank between blocks
-        # removed since BOTH sides < min_gap within this GROUP context.
+        result = reformat.fix(src, 'AR013').after
+        # Two statements before the gap (< min_gap=3) and one after: both
+        # sides are below min_gap, so the blank is removed.
+        assert result == (
+            'class C:\n'
+            '    def __init__(self):\n'
+            '        self.x = 1\n'
+            '        self.y = 2\n'
+            '        self.z = 3\n'
+        )
 
-    def test_counting_after_gap(self, tmp_path: Path) -> None:
+    def test_counting_after_gap(self, tmp_path, reformat) -> None:
         """Contiguous statements AFTER a gap are counted from the right side forward."""
         src = """class D:
     def method(self):
@@ -156,7 +137,7 @@ class TestAR013MinGapCounting:
 
         self.d = 4
 """
-        _, after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR013').after
         # Three statements before gap (>= min_gap), one after
         # The block with 3 should trigger preservation of the blank
         assert 'self.c = 3' in after

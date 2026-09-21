@@ -1,106 +1,84 @@
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
-from hooks.agent_reformat import run as run_hook
-
-
-def run_fix(tmp_path: Path, source_code: str) -> tuple[str, str]:
-    """Run agent-reformat in fix mode on a temp file. Returns (original, modified)."""
-    f = tmp_path / 'test.py'
-    f.write_text(source_code)
-    original_stdout = sys.stdout
-    captured = __import__('io').StringIO()
-    try:
-        sys.stdout = captured
-        try:
-            run_hook([str(f), '--fix', '--rules', 'AR013'])
-        except SystemExit:
-            pass
-    finally:
-        sys.stdout = original_stdout
-    return source_code, f.read_text()
-
 
 class TestAR013BasicRemoval:
     """Test that blank lines between few statements are removed."""
 
-    def test_two_statements_with_blank_removed(self, tmp_path: Path) -> None:
+    def test_two_statements_with_blank_removed(self, tmp_path, reformat) -> None:
         """Two consecutive statements with blank should lose the blank (min_gap=3)."""
         src = 'x = 1\n\ny = 2\n'
-        _, after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR013').after
         assert after == 'x = 1\ny = 2\n'
 
-    def test_three_statements_no_blank_kept(self, tmp_path: Path) -> None:
+    def test_three_statements_no_blank_kept(self, tmp_path, reformat) -> None:
         """Three consecutive statements without blanks stays the same."""
         src = 'x = 1\ny = 2\nz = 3\n'
-        _, after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR013').after
         assert after == 'x = 1\ny = 2\nz = 3\n'
 
-    def test_four_statements_with_blank_kept(self, tmp_path: Path) -> None:
+    def test_four_statements_with_blank_kept(self, tmp_path, reformat) -> None:
         """Four consecutive same-indent statements have pair gaps < min_gap,
         so blanks between adjacent pairs are removed (each pair gap has only
         1 blank line), but the group itself is not collapsed entirely.
         """
         src = 'a = 1\n\nb = 2\nc = 3\n\nd = 4\n'
-        _, after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR013').after
         # With pair-level logic: each pair has only 1 blank < min_gap(3),
         # so blanks get removed between pairs. The test now expects this.
         assert 'a = 1\nb = 2' in after
 
-    def test_five_statements_no_blanks_kept(self, tmp_path: Path) -> None:
+    def test_five_statements_no_blanks_kept(self, tmp_path, reformat) -> None:
         """Five consecutive statements without blanks stays the same."""
         src = 'a = 1\nb = 2\nc = 3\nd = 4\ne = 5\n'
-        _, after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR013').after
         assert after == src
 
 
 class TestAR013FewStatementsRemoved:
     """Test that blank lines are removed when group has < min_gap statements."""
 
-    def test_only_two_module_level_stmts(self, tmp_path: Path) -> None:
+    def test_only_two_module_level_stmts(self, tmp_path, reformat) -> None:
         """Two module-level statements remove the blank between them."""
         src = 'a = 1\n\nb = 2\n'
-        _, after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR013').after
         assert after == 'a = 1\nb = 2\n'
 
-    def test_two_statements_one_blank_removed(self, tmp_path: Path) -> None:
+    def test_two_statements_one_blank_removed(self, tmp_path, reformat) -> None:
         """Two statements at same indent remove blank (2 < min_gap)."""
         src = """def foo():
     a = 1
 
     b = 2
 """
-        _, after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR013').after
         # Inside function: 2 statements < min_gap -> remove blank
         assert after == 'def foo():\n    a = 1\n    b = 2\n'
 
-    def test_many_module_level_reduced(self, tmp_path: Path) -> None:
+    def test_many_module_level_reduced(self, tmp_path, reformat) -> None:
         """Only two module-level stmts with blank -> reduce to no blank."""
         src = 'x = 1\n\ny = 2\n'
-        _, after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR013').after
         assert after == 'x = 1\ny = 2\n'
 
 
 class TestAR013PreservedBlanks:
     """Test that certain blank lines are preserved."""
 
-    def test_between_function_defs_preserved(self, tmp_path: Path) -> None:
+    def test_between_function_defs_preserved(self, tmp_path, reformat) -> None:
         """Blank lines between function definitions at module level preserved."""
         src = 'def foo():\n    pass\n\n\ndef bar():\n    pass\n'
-        _, after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR013').after
         # Between two def blocks - should be preserved per user spec
         assert '\ndef bar()' in after
 
-    def test_between_class_defs_preserved(self, tmp_path: Path) -> None:
+    def test_between_class_defs_preserved(self, tmp_path, reformat) -> None:
         """Blank lines between class definitions at module level preserved."""
         src = 'class Foo:\n    pass\n\nclass Bar:\n    pass\n'
-        _, after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR013').after
         # Between two class blocks - should be preserved per user spec
         assert '\nclass Bar:' in after
 
-    def test_blank_after_func_body_to_module_level(self, tmp_path: Path) -> None:
+    def test_blank_after_func_body_to_module_level(self, tmp_path, reformat) -> None:
         """Blank after function body returns to module level preserved."""
         src = """def foo():
     pass
@@ -108,18 +86,18 @@ class TestAR013PreservedBlanks:
 
 x = 1
 """
-        _, after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR013').after
         # Blank before x=1 at module level should be preserved as section
         # separator
         assert 'pass\n\nx = 1' in after or 'pass\n\n\nx = 1' in after
 
-    def test_end_of_file_blanks_preserved(self, tmp_path: Path) -> None:
+    def test_end_of_file_blanks_preserved(self, tmp_path, reformat) -> None:
         """Trailing blanks at end of file should be preserved."""
         src = 'x = 1\n\n\n'
-        _, after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR013').after
         assert after == src
 
-    def test_multiline_string_blanks_preserved(self, tmp_path: Path) -> None:
+    def test_multiline_string_blanks_preserved(self, tmp_path, reformat) -> None:
         """Blanks inside multi-line strings are not touched."""
         src = '''x = """
 line1
@@ -129,7 +107,7 @@ line2
 
 y = 1
 '''
-        _, after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR013').after
         # The blank inside the string should remain
         assert '\nline1\n\nline2' in after
 
@@ -137,7 +115,7 @@ y = 1
 class TestAR013ComplexScenarios:
     """Test complex scenarios."""
 
-    def test_block_with_many_statements_keeps_blanks(self, tmp_path: Path) -> None:
+    def test_block_with_many_statements_keeps_blanks(self, tmp_path, reformat) -> None:
         """Block with >= min_gap statements but small pair gaps still cleans.
 
         When a blank separates two contiguous blocks at the same indent, and
@@ -153,21 +131,21 @@ class TestAR013ComplexScenarios:
     d = 4
     e = 5
 """
-        _, after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR013').after
         # Inside function: 5 statements at indent 4 -> group of
         # 5 >= min_gap. The gap has contiguous blocks {a,b} and {c,d,e}.
         # Since c-side has 3 >= min_gap, preserve one blank separator.
         # One blank = two newlines total before c=
         assert 'b = 2\n\n    c' in after
 
-    def test_if_block_few_statements_cleans(self, tmp_path: Path) -> None:
+    def test_if_block_few_statements_cleans(self, tmp_path, reformat) -> None:
         """Few statements inside if block -> clean up blanks."""
         src = """if True:
     a = 1
 
     b = 2
 """
-        _, after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR013').after
         # Two statements at indent 4 inside if < min_gap -> blank removed
         assert after == 'if True:\n    a = 1\n    b = 2\n'
 
@@ -175,55 +153,44 @@ class TestAR013ComplexScenarios:
 class TestAR013EdgeCases:
     """Test edge cases."""
 
-    def test_empty_file(self, tmp_path: Path) -> None:
+    def test_empty_file(self, tmp_path, reformat) -> None:
         """Empty file unchanged."""
-        _, after = run_fix(tmp_path, '')
+        after = reformat.fix('', 'AR013').after
         assert after == ''
 
-    def test_only_blanks(self, tmp_path: Path) -> None:
+    def test_only_blanks(self, tmp_path, reformat) -> None:
         """File with only blank lines unchanged."""
         src = '\n\n\n'
-        _, after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR013').after
         assert after == src
 
-    def test_single_statement(self, tmp_path: Path) -> None:
+    def test_single_statement(self, tmp_path, reformat) -> None:
         """Single statement cannot trigger rule."""
         src = 'x = 1\n'
-        _, after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR013').after
         assert after == src
 
-    def test_no_consecutive_same_indent(self, tmp_path: Path) -> None:
+    def test_no_consecutive_same_indent(self, tmp_path, reformat) -> None:
         """Alternating indent levels don't form groups with < min_gap."""
         src = 'if True:\n    pass\nx = 1\n'
-        _, after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR013').after
         assert after == src
 
 
 class TestAR013CheckMode:
     """Test that check mode works correctly."""
 
-    def test_check_mode_no_file_change(self, tmp_path: Path) -> None:
+    def test_check_mode_no_file_change(self, tmp_path, reformat) -> None:
         """Check mode should not modify the source file."""
         src = 'x = 1\n\ny = 2\n'
-        f = tmp_path / 'test.py'
-        f.write_text(src)
-        captured_out = __import__('io').StringIO()
-        original_stdout = sys.stdout
-        try:
-            sys.stdout = captured_out
-            try:
-                run_hook([str(f), '--rules', 'AR013'])
-            except SystemExit:
-                pass
-        finally:
-            sys.stdout = original_stdout
-        assert f.read_text() == src, 'Check mode must not modify the file'
+        result = reformat.check(src, 'AR013')
+        assert result.after == src, 'Check mode must not modify the file'
 
 
 class TestAR013BugFixMinGapComparison:
     """Regression for AR013 min_gap comparison bug fix."""
 
-    def test_large_group_blank_preserved(self, tmp_path):
+    def test_large_group_blank_preserved(self, tmp_path, reformat):
         """Single blank line preserved between statements in large group.
 
         When there are >= 3 consecutive same-indent statements (large group),
@@ -240,7 +207,7 @@ class TestAR013BugFixMinGapComparison:
             '        self.a = 4\n'
             '        self.b = 5\n'
         )
-        _, after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR013').after
         lines = after.split('\n')
         for i, line in enumerate(lines):
             if 'self.z' in line:
@@ -250,7 +217,7 @@ class TestAR013BugFixMinGapComparison:
                 )
                 break
 
-    def test_multiline_call_continuation_gap(self, tmp_path):
+    def test_multiline_call_continuation_gap(self, tmp_path, reformat):
         """Continuation line gap does not break contiguity of same-indent stmts.
 
         When a statement starts on one file line and the next same-indent
@@ -275,19 +242,7 @@ class TestAR013BugFixMinGapComparison:
             '        keyA = "val1"\n'
             '        keyB = "val2"\n'
         )
-        f = tmp_path / 'test.py'
-        f.write_text(src)
-        captured_out = __import__('io').StringIO()
-        original_stdout = sys.stdout
-        try:
-            sys.stdout = captured_out
-            try:
-                run_hook([str(f), '--fix', '--rules', 'AR013'])
-            except SystemExit:
-                pass
-        finally:
-            sys.stdout = original_stdout
-        after = f.read_text()
+        after = reformat.fix(src, 'AR013').after
         # The blank between assert and keyA is removed because each side of
         # that gap has only < 3 contiguous statements (resp+assert=2,
         # keyA+keyB=2). The real bug scenario had >=3 on at least one side.
@@ -303,7 +258,7 @@ class TestAR013BugFixMinGapComparison:
                     f'but found blank at index {i+1}. got: {next_line!r}'
                 )
 
-    def test_multiline_call_gap_creates_large_group_preserved_blank(self, tmp_path):
+    def test_multiline_call_gap_creates_large_group_preserved_blank(self, tmp_path, reformat):
         """Real bug scenario: blank preserved when >=3 contiguous stmts on at least one side.
 
         The original bug occurred because count_contiguous_before/after used strict
@@ -328,19 +283,7 @@ class TestAR013BugFixMinGapComparison:
             '        x3 = 3\n'
             '        x4 = 4\n'
         )
-        f = tmp_path / 'test.py'
-        f.write_text(src)
-        captured_out = __import__('io').StringIO()
-        original_stdout = sys.stdout
-        try:
-            sys.stdout = captured_out
-            try:
-                run_hook([str(f), '--fix', '--rules', 'AR013'])
-            except SystemExit:
-                pass
-        finally:
-            sys.stdout = original_stdout
-        after = f.read_text()
+        after = reformat.fix(src, 'AR013').after
         lines = after.split('\n')
         for i, line in enumerate(lines):
             if 'assert True' in line:

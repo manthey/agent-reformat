@@ -1,28 +1,6 @@
 """Regression tests for AR011 bug: blank lines between def statements were incorrectly removed."""
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
-from hooks.agent_reformat import run as run_hook
-
-
-def run_fix(tmp_path: Path, source_code: str) -> tuple[str, str]:
-    """Run agent-reformat in fix mode on a temp file. Returns (original, modified)."""
-    f = tmp_path / 'test.py'
-    f.write_text(source_code)
-    original_stdout = sys.stdout
-    captured = __import__('io').StringIO()
-    try:
-        sys.stdout = captured
-        try:
-            run_hook([str(f), '--fix', '--rules', 'AR011'])
-        except SystemExit:
-            pass
-    finally:
-        sys.stdout = original_stdout
-    return source_code, f.read_text()
-
 
 class TestAR011BetweenDefRegression:
     """Test that AR011 preserves blank lines between def statements at the same containing level.
@@ -31,7 +9,7 @@ class TestAR011BetweenDefRegression:
     sibling definitions (methods in a class, or functions at module level).
     """
 
-    def test_blank_between_class_methods_preserved(self, tmp_path: Path) -> None:
+    def test_blank_between_class_methods_preserved(self, tmp_path, reformat) -> None:
         """Blank lines between methods inside a class should be preserved."""
         src = """class Foo:
     def method(self):
@@ -41,7 +19,7 @@ class TestAR011BetweenDefRegression:
         pass
 
 """
-        _, after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR011').after
         # Blank before 'def another_method' must be preserved
         lines = after.split('\n')
         for i, line in enumerate(lines):
@@ -50,16 +28,16 @@ class TestAR011BetweenDefRegression:
                     'Blank line before def another_method was removed'
                 break
 
-    def test_blank_between_module_functions_preserved(self, tmp_path: Path) -> None:
+    def test_blank_between_module_functions_preserved(self, tmp_path, reformat) -> None:
         """Blank line between module-level function definitions should be preserved."""
         src = 'def foo(): pass\n\n\ndef bar(): pass\n'
-        _, after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR011').after
         # Module-level func defs have 2+ blank lines between them for
         # separation
         assert after == 'def foo(): pass\n\n\ndef bar(): pass\n', \
             'Blank line between module-level functions was removed'
 
-    def test_blank_after_function_before_module_var_preserved(self, tmp_path: Path) -> None:
+    def test_blank_after_function_before_module_var_preserved(self, tmp_path, reformat) -> None:
         """Blank line after a function body (returning to lower indent) should be preserved."""
         src = """def foo():
     return 1
@@ -67,7 +45,7 @@ class TestAR011BetweenDefRegression:
 
 x = 2
 """
-        _, after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR011').after
         lines = after.split('\n')
         for i, line in enumerate(lines):
             if 'return 1' in line:
@@ -83,10 +61,10 @@ x = 2
                     'Blank after function body was removed'
                 break
 
-    def test_blank_between_func_and_class_preserved(self, tmp_path: Path) -> None:
+    def test_blank_between_func_and_class_preserved(self, tmp_path, reformat) -> None:
         """Blank between func and class at module level should be preserved."""
         src = 'def foo(): pass\n\nclass Bar:\n    pass\n'
-        _, after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR011').after
         # Module-level separation preserved
         lines = after.split('\n')
         for i, line in enumerate(lines):
@@ -95,7 +73,7 @@ x = 2
                     'Blank before class was removed'
                 break
 
-    def test_nested_scope_outdent_blank_removed(self, tmp_path: Path) -> None:
+    def test_nested_scope_outdent_blank_removed(self, tmp_path, reformat) -> None:
         """When inside a nested block, blank lines to sibling code level are REMOVED."""
         src = """def outer():
     if True:
@@ -104,7 +82,7 @@ x = 2
     y = 2
 
 """
-        _, after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR011').after
         lines = after.split('\n')
         for i, line in enumerate(lines):
             if 'y = 2' in line and i > 0:
@@ -113,9 +91,7 @@ x = 2
                     'Blank between nested block and code at same level was removed'
                 break
 
-    def test_outdent_blank_lines_removed_in_code_blocks(
-        self, tmp_path: Path,
-    ) -> None:
+    def test_outdent_blank_lines_removed_in_code_blocks(self, tmp_path, reformat) -> None:
         """Blank lines inside code blocks (after outdent) should be removed.
 
         Regression test for the bug where AR011 incorrectly preserved blank
@@ -137,7 +113,7 @@ x = 2
 
         return result
 """
-        _, after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR011').after
         lines_after = after.split('\n')
         # After the fix, 'z = 3' should NOT be preceded by a blank line
         for i, line in enumerate(lines_after):
@@ -147,9 +123,7 @@ x = 2
                     f"Blank before 'z = 3' should have been "
                     f'removed! Prev line: {repr(prev_line)}')
 
-    def test_blank_between_nested_classes_inside_method_preserved(
-        self, tmp_path: Path,
-    ) -> None:
+    def test_blank_between_nested_classes_inside_method_preserved(self, tmp_path, reformat) -> None:
         """Blanks before sibling class definitions inside a method body.
 
         Regression test for the bug where AR011 incorrectly removed blank lines
@@ -174,7 +148,7 @@ x = 2
     def another_outer_method(self):
         pass
 """
-        _, after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR011').after
         # Verify two blank lines before the nested class "Inner2" are preserved
         lines = after.split('\n')
         for i, line in enumerate(lines):
@@ -185,9 +159,7 @@ x = 2
                     f'Lines at {i-2}:{repr(prev_two_lines[0])} and {i-1}:{repr(prev_two_lines[1])}'
                 )
 
-    def test_blank_after_deeply_nested_method_return_preserved(
-        self, tmp_path: Path,
-    ) -> None:
+    def test_blank_after_deeply_nested_method_return_preserved(self, tmp_path, reformat) -> None:
         """Blank lines preserved when method body ends at deep indent level."""
         src = """class C:
     def f(self):
@@ -201,7 +173,7 @@ x = 2
     def g(self):
         pass
 """
-        _, after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR011').after
         # The transition from 'return wrap' (deeper indent) to 'def g' should
         # still preserve the blank because both are sibling methods inside C.
         lines = after.split('\n')

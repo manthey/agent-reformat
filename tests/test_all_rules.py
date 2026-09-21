@@ -11,13 +11,7 @@ strip them from this test file when it is committed.  When Python evaluates
 messy_source the escapes become real codepoints that agent-reformat will find
 and clean in the temp output file.
 """
-import io
-import sys
-from pathlib import Path
-
 # MESSY_SOURCE - the full messy input that exercises every rule group
-from hooks.agent_reformat import run as agent_reformat_run
-
 MESSY_SOURCE = """
 # =============================================================================
 #  AR001 / AR041   module-level variable underscores
@@ -253,29 +247,6 @@ def outer_protected():
 """   # END MESSY_SOURCE
 
 
-def run(tmp_path: Path):
-    """Write MESSY_SOURCE to a temp file and run agent-reformat --fix on it.
-
-    Returns (cleaned_source_text, violation_lines_str).
-    """
-    src_file = tmp_path / 'messy.py'
-    src_file.write_text(MESSY_SOURCE, encoding='utf-8')
-    captured = io.StringIO()
-    original = sys.stdout
-    try:
-        sys.stdout = captured
-        try:
-            agent_reformat_run([
-                str(src_file),
-                '--rules', 'AR',
-                '--fix',
-            ])
-        except SystemExit:
-            pass
-    finally:
-        sys.stdout = original
-
-    return src_file.read_text(encoding='utf-8'), captured.getvalue()
 #  Test 1: every expected rule code must fire at least once
 
 
@@ -286,8 +257,8 @@ class TestAllRulesFire:
         'AR021', 'AR031', 'AR032',
     })
 
-    def test_every_rule_fires(self, tmp_path):
-        _, violations = run(tmp_path)
+    def test_every_rule_fires(self, reformat):
+        violations = reformat.fix(MESSY_SOURCE, 'AR', filename='messy.py').stdout
         fired = {code for code in self.EXPECTED if code in violations}
         missing = self.EXPECTED - fired
         assert not missing, (
@@ -298,73 +269,73 @@ class TestAllRulesFire:
 
 
 class TestSpotChecks:
-    def clean(self, tmp_path):
-        return run(tmp_path)[0]
+    def clean(self, reformat):
+        return reformat.fix(MESSY_SOURCE, 'AR', filename='messy.py').after
 
-    def test_001_unused_kept(self, tmp_path):
-        out = self.clean(tmp_path)
+    def test_001_unused_kept(self, reformat):
+        out = self.clean(reformat)
         msg = '_unused_var must stay (never loaded)'
         assert '_unused_var = 99' in out, msg
 
-    def test_dunder_kept(self, tmp_path):
-        out = self.clean(tmp_path)
+    def test_dunder_kept(self, reformat):
+        out = self.clean(reformat)
         assert '__magic__ = True' in out
 
-    def test_double_underscore_kept(self, tmp_path):
-        out = self.clean(tmp_path)
+    def test_double_underscore_kept(self, reformat):
+        out = self.clean(reformat)
         assert '__internal_state = 10' in out
 
-    def test_trailing_underscore_kept(self, tmp_path):
-        out = self.clean(tmp_path)
+    def test_trailing_underscore_kept(self, reformat):
+        out = self.clean(reformat)
         assert 'foo_bar_ =' in out
 
-    def test_002_stripped(self, tmp_path):
-        out = self.clean(tmp_path)
+    def test_002_stripped(self, reformat):
+        out = self.clean(reformat)
         assert 'def inner_fn()' in out, 'AR002: _inner_fn -> inner_fn'
 
-    def test_004_stripped(self, tmp_path):
-        out = self.clean(tmp_path)
+    def test_004_stripped(self, reformat):
+        out = self.clean(reformat)
         assert 'def nested_in_class()' in out, 'AR004 nested_in_class'
         assert 'def nested_in_fn()' in out, 'AR004 nested_in_fn'
 
-    def test_005_stripped(self, tmp_path):
-        out = self.clean(tmp_path)
+    def test_005_stripped(self, reformat):
+        out = self.clean(reformat)
         assert 'class PrivClass:' in out, 'AR005: _PrivClass -> PrivClass'
         assert '_priv_inst = PrivClass()' in out, 'AR005 reference updated'
 
-    def test_005_dunder_class_kept(self, tmp_path):
-        out = self.clean(tmp_path)
+    def test_005_dunder_class_kept(self, reformat):
+        out = self.clean(reformat)
         assert 'class __Meta__:' in out, 'dunder class kept'
 
-    def test_011_entry_blank_removed(self, tmp_path):
-        out = self.clean(tmp_path)
+    def test_011_entry_blank_removed(self, reformat):
+        out = self.clean(reformat)
         # The blank lines after the entry colon must be removed; the body kept
         msg = 'AR011: entry blanks for ``def ar011_entry():`` should be gone'
         assert 'def ar011_entry():\n    return 1' in out, msg
 
-    def test_noqa_var_kept(self, tmp_path):
-        out = self.clean(tmp_path)
+    def test_noqa_var_kept(self, reformat):
+        out = self.clean(reformat)
         assert '_noqa_var = 1' in out, 'noqa-protected var must stay'
 
-    def test_noqa_fn_kept(self, tmp_path):
-        out = self.clean(tmp_path)
+    def test_noqa_fn_kept(self, reformat):
+        out = self.clean(reformat)
         assert 'def _noqa_fn()' in out, 'noqa-protected fn must stay'
 
-    def test_ar031_emoji_removed(self, tmp_path):
-        out = self.clean(tmp_path)
+    def test_ar031_emoji_removed(self, reformat):
+        out = self.clean(reformat)
         # The supplementary-plane emoji U+1F600 must be gone
         assert chr(0x1F600) not in out, 'AR031: U+1F600 should be removed'
 
-    def test_ar032_deco_replaced(self, tmp_path):
-        out = self.clean(tmp_path)
+    def test_ar032_deco_replaced(self, reformat):
+        out = self.clean(reformat)
         # U+2713 (checkmark) should have been replaced by AR032
         assert chr(0x2713) not in out, 'AR032: U+2713 should be replaced'
 
-    def test_ar021_hash_line_removed(self, tmp_path):
-        out = self.clean(tmp_path)
+    def test_ar021_hash_line_removed(self, reformat):
+        out = self.clean(reformat)
         assert '##########' not in out, 'AR021: ########## line must be removed'
 
-    def test_non_emoji_preserved(self, tmp_path):
-        out = self.clean(tmp_path)
+    def test_non_emoji_preserved(self, reformat):
+        out = self.clean(reformat)
         # U+00E9 (e-acute) is NOT an emoji and must remain
         assert chr(0x00E9) in out, 'non-emoji U+00E9 should be preserved'

@@ -1,33 +1,12 @@
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
 from hooks.agent_reformat import fix_blanks_ar013
-from hooks.agent_reformat import run as run_hook
-
-
-def run_fix(tmp_path: Path, source_code: str) -> tuple[str, str]:
-    """Run agent-reformat in fix mode on a temp file. Returns (original, modified)."""
-    f = tmp_path / 'test.py'
-    f.write_text(source_code)
-    original_stdout = sys.stdout
-    captured = __import__('io').StringIO()
-    try:
-        sys.stdout = captured
-        try:
-            run_hook([str(f), '--fix', '--rules', 'AR013'])
-        except SystemExit:
-            pass
-    finally:
-        sys.stdout = original_stdout
-    return source_code, f.read_text()
 
 
 class TestAR013CommentBlankPreservation:
     """Test that blank lines between comments at the same indent are preserved."""
 
-    def test_blank_between_same_indent_comments_preserved(self, tmp_path: Path) -> None:
+    def test_blank_between_same_indent_comments_preserved(self, tmp_path, reformat) -> None:
         """Blank line between two comments at same indent should be preserved.
 
         This is the example from the feature request:
@@ -51,7 +30,7 @@ class TestAR013CommentBlankPreservation:
             '    # With a blank line\n'
             '    return a * x + y\n'
         )
-        _, after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR013').after
         # The blank line should be preserved
         # Check that there's a blank line between the two comments
         lines = after.split('\n')
@@ -66,7 +45,7 @@ class TestAR013CommentBlankPreservation:
         assert found_blank_between, 'Blank line after comment was removed'
         assert src == after, f'Expected no changes but got:\n{after}'
 
-    def test_blank_between_module_level_comments_preserved(self, tmp_path: Path) -> None:
+    def test_blank_between_module_level_comments_preserved(self, tmp_path, reformat) -> None:
         """Blank line between module-level comments should be preserved."""
         src = (
             '# Module comment\n'
@@ -74,7 +53,7 @@ class TestAR013CommentBlankPreservation:
             '# Another module comment\n'
             'x = 1\n'
         )
-        _, after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR013').after
         # Check the blank is preserved
         lines = after.split('\n')
         for i, line in enumerate(lines):
@@ -104,7 +83,7 @@ class TestAR013CommentBlankPreservation:
         assert removed == set()
         assert result == src
 
-    def test_blank_between_comments_with_code_around_preserved(self, tmp_path: Path) -> None:
+    def test_blank_between_comments_with_code_around_preserved(self, tmp_path, reformat) -> None:
         """Blank between comments should be preserved even with code around them."""
         src = (
             'def func():\n'
@@ -114,11 +93,11 @@ class TestAR013CommentBlankPreservation:
             '    # comment 2\n'
             '    b = 2\n'
         )
-        _, after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR013').after
         # Check the blank is preserved
         assert src == after, f'Blank was incorrectly removed:\n{after}'
 
-    def test_multiple_blank_pairs_between_comments(self, tmp_path: Path) -> None:
+    def test_multiple_blank_pairs_between_comments(self, tmp_path, reformat) -> None:
         """Multiple comment pairs with blanks should each preserve their blank."""
         src = (
             'def func():\n'
@@ -131,11 +110,11 @@ class TestAR013CommentBlankPreservation:
             '    # comment D\n'
             '    b = 2\n'
         )
-        _, after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR013').after
         # Both comment pairs should preserve their blanks
         assert src == after, f'Blanks were incorrectly removed:\n{after}'
 
-    def test_consecutive_comments_no_blank_needed(self, tmp_path: Path) -> None:
+    def test_consecutive_comments_no_blank_needed(self, tmp_path, reformat) -> None:
         """Consecutive comments without blank should stay the same."""
         src = (
             'def func():\n'
@@ -143,10 +122,10 @@ class TestAR013CommentBlankPreservation:
             '    # comment 2\n'
             '    pass\n'
         )
-        _, after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR013').after
         assert after == src
 
-    def test_triple_comment_with_blank_preserved(self, tmp_path: Path) -> None:
+    def test_triple_comment_with_blank_preserved(self, tmp_path, reformat) -> None:
         """Blank between triplets of comments should be preserved."""
         src = (
             'def func():\n'
@@ -157,7 +136,7 @@ class TestAR013CommentBlankPreservation:
             '    # group 4\n'
             '    pass\n'
         )
-        _, after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR013').after
         # The blank between comment groups should be preserved
         assert '# group 3\n' in after, f'Comment groups removed:\n{after}'
         lines = after.split('\n')
@@ -166,7 +145,7 @@ class TestAR013CommentBlankPreservation:
                 assert not lines[i + 1].strip(), 'Blank after group 2 was removed'
                 break
 
-    def test_ar001_example_exact(self, tmp_path: Path) -> None:
+    def test_ar001_example_exact(self, tmp_path, reformat) -> None:
         """Test the exact example from the feature request."""
         src = (
             'def func(a):\n'
@@ -177,7 +156,7 @@ class TestAR013CommentBlankPreservation:
             '    # With a blank line\n'
             '    return a * x + y\n'
         )
-        _, after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR013').after
         # The blank line between the two comments should be preserved
         lines = after.split('\n')
         found_comment_a = False

@@ -1,28 +1,6 @@
 """Regression test for AR013 bug: blank lines between import statements were being removed."""
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
-from hooks.agent_reformat import run as run_hook
-
-
-def run_fix(tmp_path: Path, source_code: str) -> tuple[str, str]:
-    """Run agent-reformat in fix mode on a temp file. Returns (original, modified)."""
-    f = tmp_path / 'test.py'
-    f.write_text(source_code)
-    original_stdout = sys.stdout
-    captured = __import__('io').StringIO()
-    try:
-        sys.stdout = captured
-        try:
-            run_hook([str(f), '--fix', '--rules', 'AR013'])
-        except SystemExit:
-            pass
-    finally:
-        sys.stdout = original_stdout
-    return source_code, f.read_text()
-
 
 class TestAR013ImportsRegression:
     """Test that AR013 preserves blank lines between import statements.
@@ -32,7 +10,7 @@ class TestAR013ImportsRegression:
     when there were fewer than min_gap statements at the same indent.
     """
 
-    def test_inner_function_imports_blank_preserved(self, tmp_path: Path) -> None:
+    def test_inner_function_imports_blank_preserved(self, tmp_path, reformat) -> None:
         """Two consecutive imports in a function should preserve their blank."""
         src = """def foo():
     import os
@@ -42,7 +20,7 @@ class TestAR013ImportsRegression:
 
 x = 1
 """
-        _, after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR013').after
         # Blank line (could be empty or with spaces) between imports should be
         # preserved
         assert 'import os' in after
@@ -60,7 +38,7 @@ x = 1
                         break
                 assert 'import sys' in next_content
 
-    def test_inner_function_many_imports_blank_preserved(self, tmp_path: Path) -> None:
+    def test_inner_function_many_imports_blank_preserved(self, tmp_path, reformat) -> None:
         """Multiple consecutive imports should preserve their blanks."""
         src = """def foo():
     import os
@@ -72,21 +50,21 @@ x = 1
 
 x = 1
 """
-        _, after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR013').after
         # All blank lines between imports should be preserved
         assert '\n\n' in after
 
-    def test_module_level_imports_blank_preserved(self, tmp_path: Path) -> None:
+    def test_module_level_imports_blank_preserved(self, tmp_path, reformat) -> None:
         """Module-level imports should preserve their blank lines."""
         src = """import os
 
 import sys
 """
-        _, after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR013').after
         # Blank between module-level imports should be preserved
         assert 'import os\n\nimport sys' in after or after.count('\n') >= 3
 
-    def test_from_imports_blank_preserved(self, tmp_path: Path) -> None:
+    def test_from_imports_blank_preserved(self, tmp_path, reformat) -> None:
         """from...import statements should also preserve blank lines."""
         src = """def foo():
     from os import path
@@ -96,6 +74,6 @@ import sys
 
 x = 1
 """
-        _, after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR013').after
         # Blank between from imports should be preserved
         assert '    from os import path\n\n    from sys import argv' in after

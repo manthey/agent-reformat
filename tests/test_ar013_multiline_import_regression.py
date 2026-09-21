@@ -1,29 +1,6 @@
 """Regression test for AR013 bug: blank lines after multi-line imports were being removed."""
 from __future__ import annotations
 
-import sys
-from io import StringIO
-from pathlib import Path
-
-from hooks.agent_reformat import run as run_hook
-
-
-def run_fix(tmp_path: Path, source_code: str) -> str:
-    """Run agent-reformat in fix mode on a temp file. Returns modified content."""
-    f = tmp_path / 'test.py'
-    f.write_text(source_code)
-    original_stdout = sys.stdout
-    captured = StringIO()
-    try:
-        sys.stdout = captured
-        try:
-            run_hook([str(f), '--fix', '--rules', 'AR013'])
-        except SystemExit:
-            pass
-    finally:
-        sys.stdout = original_stdout
-    return f.read_text()
-
 
 class TestAR013MultilineImportRegression:
     """Test that AR013 preserves blank lines after multi-line import statements.
@@ -33,7 +10,7 @@ class TestAR013MultilineImportRegression:
     multiple lines.
     """
 
-    def test_multiline_from_import_trailing_blank_preserved(self, tmp_path: Path) -> None:
+    def test_multiline_from_import_trailing_blank_preserved(self, tmp_path, reformat) -> None:
         """Blank line after a multi-line 'from ... import' should be preserved."""
         src = """from .test_annotations import (makeLargeSampleAnnotation, sampleAnnotation,
                                sampleAnnotationEmpty,
@@ -42,22 +19,22 @@ class TestAR013MultilineImportRegression:
 
 pytestmark = 1
 """
-        after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR013').after
         # The blank line between the from-import and pytestmark should be
         # preserved
         assert 'sampleAnnotationWithPointsAndMetadata)\n\npytestmark' in after
 
-    def test_multiline_from_import_no_blank_following(self, tmp_path: Path) -> None:
+    def test_multiline_from_import_no_blank_following(self, tmp_path, reformat) -> None:
         """When no blank follows multi-line import, behavior is correct."""
         src = """from .test_annotations import (makeLargeSampleAnnotation, sampleAnnotation,
                                sampleAnnotationEmpty)
 pytestmark = 1
 """
-        after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR013').after
         # Should not add a blank that wasn't there
         assert 'sampleAnnotationEmpty)\npytestmark' in after
 
-    def test_multiline_import_inside_function(self, tmp_path: Path) -> None:
+    def test_multiline_import_inside_function(self, tmp_path, reformat) -> None:
         """Multi-line import inside a function should preserve trailing blank."""
         src = """def foo():
     from os import (path,
@@ -68,11 +45,11 @@ pytestmark = 1
 
 x = 1
 """
-        after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR013').after
         # The blank line after the multi-line import should be preserved
         assert 'getcwd)\n\n    return' in after
 
-    def test_original_bug_case(self, tmp_path: Path) -> None:
+    def test_original_bug_case(self, tmp_path, reformat) -> None:
         """Replicate the original bug case from the issue."""
         src = """import copy
 import json
@@ -89,7 +66,7 @@ from .test_annotations import (makeLargeSampleAnnotation, sampleAnnotation,
 
 pytestmark = pytest.mark.girder
 """
-        after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR013').after
         # Find the multi-line import and verify blank line is preserved after
         lines = after.split('\n')
         found_multiline_import_end = False

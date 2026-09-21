@@ -15,34 +15,11 @@ any statement within a fixed offset of having a STRING on its line.
 """
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
-from hooks.agent_reformat import run as run_hook
-
-
-def run_fix(tmp_path: Path, source_code: str) -> tuple[str, str]:
-    """Run agent-reformat in fix mode on a temp file. Returns (original, modified)."""
-    f = tmp_path / 'test.py'
-    f.write_text(source_code)
-    original_stdout = sys.stdout
-    captured = __import__('io').StringIO()
-    try:
-        sys.stdout = captured
-        try:
-            run_hook([str(f), '--fix', '--rules', 'AR013'])
-        except SystemExit:
-            pass
-    finally:
-        sys.stdout = original_stdout
-    f_content = f.read_text()
-    return source_code, f_content
-
 
 class TestAR013StringArgsRegression:
     """Blank lines after function calls with STRING args should be cleaned up by AR013."""
 
-    def test_blank_between_method_calls_with_string_args(self, tmp_path: Path) -> None:
+    def test_blank_between_method_calls_with_string_args(self, tmp_path, reformat) -> None:
         """Blank between events.bind(...) and search.pop() should be removed.
 
         Both statements contain STRING literal arguments but are valid
@@ -57,20 +34,20 @@ class TestAR013StringArgsRegression:
 
     search._allowedSearchMode.pop('key', None)
 """
-        _, after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR013').after
         # Two indent-4 statements (< min_gap=3), blank should be removed
         assert 'process_annotations)\n    search' in after, (
             f'Blank between calls was not removed! Output:\n{after}'
         )
 
-    def test_simple_two_stmts_with_string_args(self, tmp_path: Path) -> None:
+    def test_simple_two_stmts_with_string_args(self, tmp_path, reformat) -> None:
         """Two simple statements each with STRING arguments - blank between removed."""
         src = """def foo():
     call_me('arg1', 'arg2')
 
     next_fn('data')
 """
-        _, after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR013').after
         # Two indent-4 statements (< min_gap=3), blank should be removed
         # Before fix: blank was preserved because stmts were skipped
         assert "'arg1', 'arg2'" in after
@@ -84,7 +61,7 @@ class TestAR013StringArgsRegression:
 class TestAR013MultilineCallWithNeighborStrings:
     """Statements near multiline STRING calls still get processed correctly."""
 
-    def test_between_multiline_calls_blank_removed(self, tmp_path: Path) -> None:
+    def test_between_multiline_calls_blank_removed(self, tmp_path, reformat) -> None:
         """Blank between a multiline call (ending with boolean arg) and next statement
         should still be removed even if adjacent to other statements using strings.
         """
@@ -95,7 +72,7 @@ class TestAR013MultilineCallWithNeighborStrings:
 
     search.pop('metadata', None)
 """
-        _, after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR013').after
         # Two indent-4 statements (< min_gap=3), blank should be removed
         assert "'boolean')\n\n    search" not in after, (
             f'Blank between multiline call and next statement was NOT removed! Output:\n{after}'
@@ -105,7 +82,7 @@ class TestAR013MultilineCallWithNeighborStrings:
 class TestAR013NoFalsePositives:
     """Ensure the fix doesn't accidentally break valid protection."""
 
-    def test_multiline_string_blanks_preserved(self, tmp_path: Path) -> None:
+    def test_multiline_string_blanks_preserved(self, tmp_path, reformat) -> None:
         """Verify blank lines INSIDE genuine multi-line strings are preserved."""
         src = '''def foo():
     text = """
@@ -117,6 +94,6 @@ class TestAR013NoFalsePositives:
 
     next_fn()
 '''
-        _, after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR013').after
         # The blank inside the multiline string should remain
         assert 'hello\n\n    world' in after

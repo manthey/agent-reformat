@@ -6,14 +6,11 @@ exactly as if there were nothing to fix.
 """
 from __future__ import annotations
 
-import io
-import sys
 from pathlib import Path
 
 import pytest
 
 from hooks.agent_reformat import fix_blanks_ar013
-from hooks.agent_reformat import run as run_hook
 
 # Invalid Python: unclosed parenthesis plus other rule-triggering constructs.
 INVALID_SOURCES = {
@@ -31,65 +28,38 @@ ALL_CODES = [
 ]
 
 
-def run_cli(path: Path, rules: str | None = None) -> int:
-    """Run the CLI on *path*; return the exit code. Never raises SystemExit."""
-    args = [str(path), '--fix']
-    if rules:
-        args.append(f'--rules={rules}')
-    out, orig = io.StringIO(), sys.stdout
-    rc = 0
-    try:
-        sys.stdout = out
-        try:
-            run_hook(args)
-        except SystemExit as exc:
-            rc = exc.code if exc.code is not None else 0
-    finally:
-        sys.stdout = orig
-    return rc
-
-
 @pytest.mark.parametrize('name', sorted(INVALID_SOURCES))
-def test_invalid_file_left_unchanged_all_rules(tmp_path: Path, name: str) -> None:
+def test_invalid_file_left_unchanged_all_rules(
+    tmp_path: Path, reformat, name: str,
+) -> None:
     """A full default run must not crash or modify an unparsable file."""
     src = INVALID_SOURCES[name]
-    f = tmp_path / 'bad.py'
-    f.write_text(src)
-    rc = run_cli(f)
-    assert f.read_text() == src, f'{name}: invalid file was modified'
-    assert rc == 0, f'{name}: expected success exit code, got {rc}'
+    res = reformat.fix(src, path=tmp_path / 'bad.py')
+    assert res.after == src, f'{name}: invalid file was modified'
+    assert res.rc == 0, f'{name}: expected success exit code, got {res.rc}'
 
 
 @pytest.mark.parametrize('code', ALL_CODES)
-def test_each_rule_noop_on_invalid_file(tmp_path: Path, code: str) -> None:
+def test_each_rule_noop_on_invalid_file(
+    tmp_path: Path, reformat, code: str,
+) -> None:
     """No individual rule may crash or rewrite an unparsable file."""
     src = INVALID_SOURCES['unclosed_paren']
-    f = tmp_path / f'{code}.py'
-    f.write_text(src)
-    rc = run_cli(f, code)
-    assert f.read_text() == src, f'{code}: modified an invalid file'
-    assert rc == 0, f'{code}: expected success exit code, got {rc}'
+    res = reformat.fix(src, code, path=tmp_path / f'{code}.py')
+    assert res.after == src, f'{code}: modified an invalid file'
+    assert res.rc == 0, f'{code}: expected success exit code, got {res.rc}'
 
 
 @pytest.mark.parametrize('name', sorted(INVALID_SOURCES))
-def test_check_mode_noop_on_invalid_file(tmp_path: Path, name: str) -> None:
+def test_check_mode_noop_on_invalid_file(
+    tmp_path: Path, reformat, name: str,
+) -> None:
     """Check mode (no --fix) must also survive invalid input."""
     src = INVALID_SOURCES[name]
-    f = tmp_path / 'bad.py'
-    f.write_text(src)
-    out, orig = io.StringIO(), sys.stdout
-    rc = 0
-    try:
-        sys.stdout = out
-        try:
-            run_hook([str(f), '--rules=AR013'])
-        except SystemExit as exc:
-            rc = exc.code if exc.code is not None else 0
-    finally:
-        sys.stdout = orig
-    assert f.read_text() == src
-    assert rc == 0, f'{name}: check mode rc={rc}'
-    assert 'AR0' not in out.getvalue(), 'no violations should be reported'
+    res = reformat.check(src, 'AR013', path=tmp_path / 'bad.py')
+    assert res.after == src
+    assert res.rc == 0, f'{name}: check mode rc={res.rc}'
+    assert 'AR0' not in res.stdout, 'no violations should be reported'
 
 
 def test_fix_blanks_ar013_returns_unchanged_on_invalid() -> None:
@@ -100,10 +70,8 @@ def test_fix_blanks_ar013_returns_unchanged_on_invalid() -> None:
     assert removed == set()
 
 
-def test_valid_file_still_processed(tmp_path: Path) -> None:
+def test_valid_file_still_processed(tmp_path: Path, reformat) -> None:
     """Guard against the SyntaxError guard disabling valid processing."""
     valid = '_x = 1\nprint(_x)\n'
-    f = tmp_path / 'good.py'
-    f.write_text(valid)
-    run_cli(f, 'AR001')
-    assert f.read_text() == 'x = 1\nprint(x)\n'
+    res = reformat.fix(valid, 'AR001', path=tmp_path / 'good.py')
+    assert res.after == 'x = 1\nprint(x)\n'

@@ -1,32 +1,10 @@
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
-from hooks.agent_reformat import run as run_hook
-
-
-def run_fix(tmp_path: Path, source_code: str) -> tuple[str, str]:
-    """Run agent-reformat in fix mode on a temp file. Returns (original, modified)."""
-    f = tmp_path / 'test.py'
-    f.write_text(source_code)
-    original_stdout = sys.stdout
-    captured = __import__('io').StringIO()
-    try:
-        sys.stdout = captured
-        try:
-            run_hook([str(f), '--fix', '--rules', 'AR013'])
-        except SystemExit:
-            pass
-    finally:
-        sys.stdout = original_stdout
-    return source_code, f.read_text()
-
 
 class TestAR013ClassBodyBlanks:
     """Regression tests for AR013 blank lines within class/function bodies."""
 
-    def test_blank_after_docstring_inside_class_preserved(self, tmp_path: Path):
+    def test_blank_after_docstring_inside_class_preserved(self, tmp_path, reformat):
         """Blank line after docstring inside a class should be preserved.
 
         Regression test: blank lines WITHIN class bodies (between attributes)
@@ -50,7 +28,7 @@ class TestAR013ClassBodyBlanks:
     _geospatial_source = True
 
 """
-        _, after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR013').after
         # The blank line at position 2 inside the class must be preserved
         lines = after.split('\n')
         for i, line in enumerate(lines):
@@ -59,7 +37,7 @@ class TestAR013ClassBodyBlanks:
                     f"Blank before '{line}' should be preserved but was removed"
                 )
 
-    def test_blank_inside_class_between_attributes_preserved(self, tmp_path: Path):
+    def test_blank_inside_class_between_attributes_preserved(self, tmp_path, reformat):
         """Multiple blank lines inside class between attributes should be preserved."""
         src = """class GDALBaseFileTileSource:
     \"\"\"Base class for GDAL sources.\"\"\"
@@ -71,12 +49,12 @@ class TestAR013ClassBodyBlanks:
 another_class_attr = 1
 
 """
-        _, after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR013').after
         # Verify blank lines are preserved
         assert '    _unstyledStyle' in after
         assert '\n\n' in after  # Multiple consecutive blanks within/between
 
-    def test_multiple_classes_with_internal_blanks(self, tmp_path: Path):
+    def test_multiple_classes_with_internal_blanks(self, tmp_path, reformat):
         """Multiple classes each with internal blanks should preserve them."""
         src = """class A:
     \"\"\"A docstring.\"\"\"
@@ -91,7 +69,7 @@ class B:
 
 
 """
-        _, after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR013').after
         # Both internal blanks should be preserved
         assert '    attr_a' in after
         assert '    attr_b' in after
@@ -109,7 +87,7 @@ class B:
                     f"Blank before '{line}' should be preserved in class B"
                 )
 
-    def test_blank_inside_function_preserved(self, tmp_path: Path):
+    def test_blank_inside_function_preserved(self, tmp_path, reformat):
         """Blank after a docstring is removed; module-level blanks preserved."""
         src = (
             'def my_func():\n'
@@ -122,7 +100,7 @@ class B:
             '    pass\n'
             '\n'
         )
-        _, after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR013').after
         assert after == (
             'def my_func():\n    """Docstring."""\n    x = 1\n'
             '\n\nclass Outer:\n    pass\n\n'
@@ -132,7 +110,7 @@ class B:
 class TestAR013ClassBodyBlanksRegression:
     """Focused regression test for the exact bug described in git issue."""
 
-    def test_geo_py_pattern_preserved(self, tmp_path: Path):
+    def test_geo_py_pattern_preserved(self, tmp_path, reformat):
         """Exact pattern from geo.py lines 67-80 should preserve internal blanks.
 
         This replicates the structure found at /home/ubuntu/large_image/.../geo.py
@@ -155,7 +133,7 @@ class GDALBaseFileTileSource(GeoBaseFileTileSource):
 
     _unstyledStyle = '{}'
 """
-        _, after = run_fix(tmp_path, src)
+        after = reformat.fix(src, 'AR013').after
         # Verify the structure is preserved
         lines = after.split('\n')
         found_geospatial_attr = False

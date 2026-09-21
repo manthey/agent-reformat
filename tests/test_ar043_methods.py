@@ -1,46 +1,22 @@
 """Tests for AR043: Method underscore stripping in non-exported classes."""
 from __future__ import annotations
 
-import io
-import sys
-from pathlib import Path
-
-
-def run_hook(tmp_path: Path, src: str) -> tuple[str, str]:
-    """Run agent-reformat. Returns (prev_content, after)."""
-    f = tmp_path / 'sample.py'
-    f.write_text(src)
-    from hooks.agent_reformat import run
-    err_output = io.StringIO()
-    orig = sys.stdout
-    try:
-        sys.stdout = err_output
-        try:
-            run([str(f), '--rules=AR043', '--fix'])
-        except SystemExit:
-            pass
-    finally:
-        sys.stdout = orig
-    return src, f.read_text()
-
 
 class TestPublicClassMethods:
     """Methods in exported classes keep underscores."""
 
-    def test_public_class_method_kept_with_all(self, tmp_path: Path) -> None:
+    def test_public_class_method_kept_with_all(self, tmp_path, reformat) -> None:
         """Class listed in __all__ has protected methods."""
         src = "__all__ = ['MyClass']\nclass MyClass:\n\t" \
               'def _helper(): pass\n'
-        prev, result = run_hook(tmp_path, src)
+        result = reformat.fix(src, 'AR043').after
         assert '_helper' in result  # Kept because public class
 
 
 class TestNonPublicClassMethods:
     """Methods in private classes can have underscores stripped."""
 
-    def test_private_class_method_kept_no_all(
-        self, tmp_path: Path,
-    ) -> None:
+    def test_private_class_method_kept_no_all(self, tmp_path, reformat) -> None:
         """An underscore-named class is non-exported, so its methods strip."""
         src = (
             'class _Helper:\n'
@@ -49,7 +25,7 @@ class TestNonPublicClassMethods:
             'h = _Helper()\n'
             'h._impl()\n'
         )
-        prev, result = run_hook(tmp_path, src)
+        result = reformat.fix(src, 'AR043').after
         assert 'def impl(self):' in result
         assert '_impl' not in result
 
@@ -57,7 +33,7 @@ class TestNonPublicClassMethods:
 class TestNoAll:
     """Without __all__, behavior differs by prefix name."""
 
-    def test_public_class_keeps_methods(self, tmp_path: Path) -> None:
+    def test_public_class_keeps_methods(self, tmp_path, reformat) -> None:
         """Without __all__, a public class keeps its method underscores."""
         src = (
             'class PublicClass:\n'
@@ -66,7 +42,7 @@ class TestNoAll:
             'p = PublicClass()\n'
             'p._helper()\n'
         )
-        prev, result = run_hook(tmp_path, src)
+        result = reformat.fix(src, 'AR043').after
         assert result == src
         assert '_helper' in result
 
@@ -74,7 +50,7 @@ class TestNoAll:
 class TestAsyncMethods:
     """Async methods respect the same rules."""
 
-    def test_public_class_async_method_kept(self, tmp_path: Path) -> None:
+    def test_public_class_async_method_kept(self, tmp_path, reformat) -> None:
         """Public class async method keeps underscore."""
         src = (
             "__all__ = ['Public']\n"
@@ -84,7 +60,7 @@ class TestAsyncMethods:
             'p = Public()\n'
             'p._fetch()\n'
         )
-        prev, result = run_hook(tmp_path, src)
+        result = reformat.fix(src, 'AR043').after
         assert result == src
         assert '_fetch' in result
 
@@ -92,7 +68,7 @@ class TestAsyncMethods:
 class TestNoqaProtection:
     """noqa directive suppresses stripping for methods."""
 
-    def test_method_with_noqa_kept(self, tmp_path: Path) -> None:
+    def test_method_with_noqa_kept(self, tmp_path, reformat) -> None:
         """# noqa on a strippable method keeps its underscore."""
         src = (
             'class _F:\n'
@@ -101,7 +77,7 @@ class TestNoqaProtection:
             'f = _F()\n'
             'f._x()\n'
         )
-        prev, result = run_hook(tmp_path, src)
+        result = reformat.fix(src, 'AR043').after
         assert result == src
         assert '_x' in result
 
@@ -109,7 +85,7 @@ class TestNoqaProtection:
 class TestEdgeCases:
     """Patterns that never get stripped."""
 
-    def test_dunder_method_preserved(self, tmp_path: Path) -> None:
+    def test_dunder_method_preserved(self, tmp_path, reformat) -> None:
         """Dunder methods always kept."""
         src = (
             'class _F:\n'
@@ -117,7 +93,7 @@ class TestEdgeCases:
             '        pass\n'
             'f = _F()\n'
         )
-        prev, result = run_hook(tmp_path, src)
+        result = reformat.fix(src, 'AR043').after
         assert result == src
         assert '__init__' in result
 
@@ -125,7 +101,7 @@ class TestEdgeCases:
 class TestAttributeAccessRegression:
     """Regression test: Attribute.attr tracking should not break public class detection."""
 
-    def test_public_class_method_via_attr_access_kept(self, tmp_path: Path) -> None:
+    def test_public_class_method_via_attr_access_kept(self, tmp_path, reformat) -> None:
         """Method accessed via obj.method() in a class listed in __all__ keeps underscore.
 
         This is a regression test for a bug where the class definition matching
@@ -142,10 +118,10 @@ class PublicClass:
 obj = PublicClass()
 print(obj._helper)
 """
-        prev, result = run_hook(tmp_path, src)
+        result = reformat.fix(src, 'AR043').after
         assert '_helper' in result  # Must keep underscore for public class
 
-    def test_public_class_no_trailing_space_kept(self, tmp_path: Path) -> None:
+    def test_public_class_no_trailing_space_kept(self, tmp_path, reformat) -> None:
         """Class definition without trailing space after colon is matched."""
         src = """__all__ = ['MyClass']
 
@@ -156,5 +132,5 @@ class MyClass:
 c = MyClass()
 assert c._internal() == 42
 """
-        prev, result = run_hook(tmp_path, src)
+        result = reformat.fix(src, 'AR043').after
         assert '_internal' in result  # Must keep underscore
