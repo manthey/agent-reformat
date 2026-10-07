@@ -911,18 +911,61 @@ STMT_TYPES_KW = (
 )
 
 
-def find_string_lines(source):
-    """Find 0-based line indices inside STRING tokens."""
-    out = set()
+def iter_string_token_ranges(source):
+    """Yield ``(start_line, end_line)`` (1-based, inclusive) per string literal.
+
+    Covers plain ``STRING`` literals as well as interpolated string literals,
+    which tokenize differently across versions: f-strings use
+    ``FSTRING_START`` / ``FSTRING_MIDDLE`` / ``FSTRING_END`` on Python 3.12+,
+    and template strings (PEP 750) use the analogous ``TSTRING_*`` tokens on
+    Python 3.14+.  On Python 3.10/3.11 the ``FSTRING_*`` constants may be
+    absent and f-strings tokenize as ``STRING``, which the ``getattr`` guards
+    handle.  Interpolated literals can nest (one inside another's replacement
+    field), so the outermost start is paired with its matching end via a depth
+    counter; the whole nested span is reported as one range.
+    """
+    # (START, END) token types that denote an interpolated string literal.
+    interp_starts = set()
+    interp_ends = set()
+    for prefix in ('FSTRING', 'TSTRING'):
+        start_tok = getattr(tokenize, f'{prefix}_START', None)
+        end_tok = getattr(tokenize, f'{prefix}_END', None)
+        if start_tok is not None:
+            interp_starts.add(start_tok)
+        if end_tok is not None:
+            interp_ends.add(end_tok)
     try:
-        for tok in tokenize.generate_tokens(
-            io.StringIO(source).readline,
-        ):
-            if tok.type == tokenize.STRING:
-                for ln in range(tok.start[0], tok.end[0] + 1):
-                    out.add(ln - 1)
+        tokens = list(
+            tokenize.generate_tokens(io.StringIO(source).readline),
+        )
     except (tokenize.TokenError, ValueError):
-        pass
+        return
+    depth = 0
+    start = None
+    for tok in tokens:
+        if tok.type in interp_starts:
+            if depth == 0:
+                start = tok.start[0]
+            depth += 1
+        elif tok.type in interp_ends:
+            depth -= 1
+            if depth == 0 and start is not None:
+                yield start, tok.end[0]
+                start = None
+        elif tok.type == tokenize.STRING:
+            yield tok.start[0], tok.end[0]
+
+
+def find_string_lines(source):
+    """Find 0-based line indices inside any string literal (incl. f-strings).
+
+    See :func:`iter_string_token_ranges` for how the different string token
+    kinds across Python versions are handled.
+    """
+    out = set()
+    for start_ln, end_ln in iter_string_token_ranges(source):
+        for ln in range(start_ln, end_ln + 1):
+            out.add(ln - 1)
     return out
 
 
@@ -981,33 +1024,30 @@ def collect_stmt_starts(source, lines, string_lines):  # noqa: C901
     out: list[tuple[int, int]] = []
     import_lines: set[int] = set()  # 0-based line numbers that are imports
     # Build a set of (start_line_1based, end_line_1based) for truly multiline
-    # STRING tokens. These mark actual multi-line string content ranges.
-    multiline_string_ranges: list[tuple[int, int]] = []
-    try:
-        import tokenize as _tokenize  # type: ignore[import-untyped]
-        for tok in _tokenize.generate_tokens(io.StringIO(source).readline):
-            if tok.type == _tokenize.STRING:
-                start_ln = tok.start[0]  # 1-based
-                end_ln = tok.end[0]     # 1-based
-                if end_ln > start_ln:   # only multi-line
-                    multiline_string_ranges.append((start_ln, end_ln))
-    except ValueError:
-        pass  # If tokenization fails, just don't protect any ranges
+    # string literal tokens (plain, f-string, or template string). These mark
+    # actual multi-line string content ranges.
+    multiline_string_ranges: list[tuple[int, int]] = [
+        (start_ln, end_ln)
+        for start_ln, end_ln in iter_string_token_ranges(source)
+        if end_ln > start_ln  # only multi-line
+    ]
 
     def visit(node):
         if isinstance(node, STMT_TYPES_KW):
             ln = getattr(node, 'lineno', None)
             if ln is not None:
                 ln0 = ln - 1
-                # Skip statements that fall INSIDE a multi-line STRING range.
-                # We use actual token boundaries (start_line..end_line) rather
-                # than fixed offset checks to avoid false positives where:
-                #   - the statement's own arguments are STRING literals
-                #     (e.g., events.bind('data.process', ...))
-                #   - adjacent statements happen to use STRING arguments
+                # Skip statements that BEGIN strictly inside a multi-line
+                # string literal. A statement's own opening line is where its
+                # ``lineno`` points, so a construct like ``x = """..."""``
+                # starts exactly on the string's first line and IS a real
+                # statement that must be counted; only a line strictly after
+                # that start lies within the string content. This keeps the
+                # guard while avoiding the false positive where the statement's
+                # own RHS is a multi-line string.
                 in_multiline = False
                 for s, e in multiline_string_ranges:
-                    if s <= ln0 + 1 <= e:  # 1-based check
+                    if s < ln0 + 1 <= e:  # 1-based, strictly inside
                         in_multiline = True
                         break
                 skip = in_multiline
